@@ -1,5 +1,6 @@
 package com.Echoes.Jogo.Screen;
 
+
 import com.Echoes.Jogo.Entities.Base;
 import com.Echoes.Jogo.Entities.Item;
 import com.Echoes.Jogo.Entities.ItemType;
@@ -28,6 +29,8 @@ import java.util.List;
 import java.util.Map;
 
 public class LunarScreen implements Screen {
+
+    private com.badlogic.gdx.graphics.Texture background;
 
     public static final float WORLD_WIDTH = 1280;
     public static final float WORLD_HEIGHT = 720;
@@ -76,6 +79,14 @@ public class LunarScreen implements Screen {
         batch = new SpriteBatch();
         shapeRenderer = new ShapeRenderer();
         font = new BitmapFont();
+
+        // Carrega o fundo. Se o arquivo não existir ainda, background fica null e o jogo
+        // usa a cor sólida de sempre (sem quebrar nada).
+        if (Gdx.files.internal("background.png").exists()) {
+            background = new com.badlogic.gdx.graphics.Texture(Gdx.files.internal("background.png"));
+            background.setWrap(com.badlogic.gdx.graphics.Texture.TextureWrap.Repeat,
+                com.badlogic.gdx.graphics.Texture.TextureWrap.Repeat);
+        }
 
         // Habilita transparência — necessário pro fade-out das partículas e o painel do HUD
         Gdx.gl.glEnable(GL20.GL_BLEND);
@@ -141,6 +152,18 @@ public class LunarScreen implements Screen {
     private void desenharMundo() {
         viewport.apply();
         camera.update();
+
+        if (background != null) {
+            batch.setProjectionMatrix(camera.combined);
+            batch.begin();
+            // TextureRegion com repetição: a textura se repete lado a lado cobrindo o mundo todo,
+            // em vez de esticar uma imagem só (fica mais nítido)
+            com.badlogic.gdx.graphics.g2d.TextureRegion regiaoFundo =
+                new com.badlogic.gdx.graphics.g2d.TextureRegion(background, 0, 0,
+                    (int) WORLD_WIDTH, (int) WORLD_HEIGHT);
+            batch.draw(regiaoFundo, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+            batch.end();
+        }
 
         // --- Camada 1: retângulos (fallback pra quem ainda não tem sprite pra aquela região) ---
         shapeRenderer.setProjectionMatrix(camera.combined);
@@ -272,5 +295,6 @@ public class LunarScreen implements Screen {
         font.dispose();
         assets.dispose();
         particleManager.clear();
+        if (background != null) background.dispose(); // adiciona essa linha
     }
 }
