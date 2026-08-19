@@ -1,0 +1,13 @@
+lunar.png
+size:2048,512
+repeat:none
+base
+bounds:2,2,354,282
+item_comida
+bounds:1038,36,346,248
+item_gelo
+bounds:1386,41,338,243
+item_oxigenio
+bounds:358,4,344,280
+player
+bounds:704,5,332,279
