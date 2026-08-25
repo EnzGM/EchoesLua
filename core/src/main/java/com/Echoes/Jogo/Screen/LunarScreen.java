@@ -22,6 +22,7 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
+import com.Echoes.Jogo.Entities.Portal;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -51,6 +52,7 @@ public class LunarScreen implements Screen {
     private Base base;
     private List<Item> itens;
     private PlayerStatus status;
+    private Portal portal;
 
     private GameAssets assets;
     private ParticleManager particleManager;
@@ -62,6 +64,7 @@ public class LunarScreen implements Screen {
     private final Map<ItemType, TextureAtlas.AtlasRegion> itemRegions = new EnumMap<>(ItemType.class);
 
     private float timerPoeira = 0f; // controla o intervalo entre partículas de poeira
+    private boolean entrarEmMarte = false;
 
     public LunarScreen(Main game) {
         this.game = game;
@@ -94,6 +97,7 @@ public class LunarScreen implements Screen {
 
         player = new Rectangle(WORLD_WIDTH / 2f - 32, WORLD_HEIGHT / 2f - 32, 64, 64);
         base = new Base(60, 60, 160, 160);
+        portal = new Portal(1150, 60, 100, 100); // canto da base, ajuste como quiser
 
         itens = new ArrayList<>();
         itens.add(new Item(400, 500, ItemType.OXIGENIO));
@@ -135,12 +139,17 @@ public class LunarScreen implements Screen {
             dispose();
             return; // sai imediatamente, não desenha mais nada nessa tela
         }
-
-        if (checkVitoria()) {
-            game.setScreen(new VictoryScreen(game));
+        if (entrarEmMarte) {
+            game.setScreen(new MarsScreen(game));
             dispose();
-            return; // idem
+            return; // sai imediatamente — nada mais tenta usar o batch destruído
         }
+
+        //if (checkVitoria()) {
+        //    game.setScreen(new VictoryScreen(game));
+        //    dispose();
+        //    return; // idem
+        //}
 
         Gdx.gl.glClearColor(0.08f, 0.09f, 0.12f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
@@ -173,6 +182,8 @@ public class LunarScreen implements Screen {
             shapeRenderer.setColor(status.inventarioGelo > 0 ? Color.YELLOW : Color.BLUE);
             shapeRenderer.rect(base.bounds.x, base.bounds.y, base.bounds.width, base.bounds.height);
         }
+        shapeRenderer.setColor(portal.ativo ? Color.MAGENTA : Color.DARK_GRAY);
+        shapeRenderer.rect(portal.bounds.x, portal.bounds.y, portal.bounds.width, portal.bounds.height);
 
         for (Item item : itens) {
             if (item.coletado) continue;
@@ -242,6 +253,11 @@ public class LunarScreen implements Screen {
 
         if (Gdx.input.isKeyJustPressed(Input.Keys.E) && player.overlaps(base.bounds)) {
             status.processarGelo();
+        }
+        portal.ativo = checkVitoria();
+
+        if (portal.ativo && Gdx.input.isKeyJustPressed(Input.Keys.E) && player.overlaps(portal.bounds)) {
+            entrarEmMarte = true;
         }
     }
 
