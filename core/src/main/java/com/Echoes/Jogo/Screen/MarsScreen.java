@@ -1,9 +1,15 @@
 package com.Echoes.Jogo.Screen;
 
+import com.Echoes.Jogo.Entities.Item;
+import com.Echoes.Jogo.Entities.ItemType;
 import com.Echoes.Jogo.Entities.PlayerStatus;
+import com.Echoes.Jogo.Entities.Portal;
 import com.Echoes.Jogo.Main;
 import com.Echoes.Jogo.Managers.GameAssets;
+import com.Echoes.Jogo.Managers.MissionState;
 import com.Echoes.Jogo.Managers.ParticleManager;
+import com.Echoes.Jogo.Managers.SaveManager;
+import com.Echoes.Jogo.Ui.Hud;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
@@ -11,6 +17,7 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
@@ -31,14 +38,16 @@ public class MarsScreen implements Screen {
     private PlayerStatus status;
 
     private OrthographicCamera camera;
+    private OrthographicCamera hudCamera;
     private Viewport viewport;
     private SpriteBatch batch;
     private ShapeRenderer shapeRenderer;
     private BitmapFont font;
+    private Hud hud;
+    private MissionState missao;
 
     private Rectangle player;
     private float playerSpeed = 220f;
-    private int playerVida = 100;
 
     private GameAssets assets;
     private TextureAtlas.AtlasRegion playerRegion;
@@ -47,6 +56,17 @@ public class MarsScreen implements Screen {
 
     private ParticleManager particleManager;
     private float timerTempestade = 0f;
+
+    // Tecla de pausa/menu (igual à LunarScreen): ESC pausa, M salva e volta ao menu principal
+    private boolean pausado = false;
+    private final GlyphLayout layoutPausa = new GlyphLayout();
+
+    // MELHORIA 6: portal de volta pra Lua (bidirecional)
+    private Portal portalRetorno;
+    private boolean voltarParaLua = false;
+
+    // MELHORIA 3: itens dropados pelos inimigos (municao ou kit de vida)
+    private Array<Item> itensChao;
 
     private static class ObstaculoPedra {
         public Rectangle bounds;
@@ -110,11 +130,19 @@ public class MarsScreen implements Screen {
         camera.position.set(WORLD_WIDTH / 2f, WORLD_HEIGHT / 2f, 0);
         camera.update();
 
+        hudCamera = new OrthographicCamera();
+        hudCamera.setToOrtho(false, 1280, 720);
+
         batch = new SpriteBatch();
         shapeRenderer = new ShapeRenderer();
         font = new BitmapFont();
+        hud = new Hud();
 
-        player = new Rectangle(WORLD_WIDTH / 2f - 32, WORLD_HEIGHT / 2f - 32, 64, 64);
+        missao = new MissionState();
+        missao.setEtapa(status.missaoEtapa);
+
+        // MELHORIA 6: player nasce no checkpoint salvo (ou no centro, na 1a vez)
+        player = new Rectangle(status.lastMarteX, status.lastMarteY, 64, 64);
 
         assets = new GameAssets();
         assets.carregar();
@@ -133,9 +161,16 @@ public class MarsScreen implements Screen {
         inimigos = new Array<>();
         tirosJogador = new Array<>();
         tirosInimigos = new Array<>();
+        itensChao = new Array<>();
 
-        // Se a arma já foi craftada na Lua, o combate já se inicia direto!
+        portalRetorno = new Portal(2400, 1300);
+        portalRetorno.ativo = true; // sempre disponivel pra voltar pra Lua
+
+        // MELHORIA 6: retoma a wave onde parou, em vez de sempre reiniciar do zero
         if (status.armaCraftada) {
+            if (status.marteWaveAtual > 0) {
+                currentWave = status.marteWaveAtual - 1;
+            }
             proximaWave();
         }
     }
@@ -143,6 +178,7 @@ public class MarsScreen implements Screen {
     @Override
     public void render(float delta) {
         if (transicaoVictoryPendente) {
+            SaveManager.apagarSave(); // campanha concluida, encerra o save
             game.setScreen(new VictoryScreen(game));
             dispose();
             return;
@@ -152,16 +188,40 @@ public class MarsScreen implements Screen {
             dispose();
             return;
         }
+        if (voltarParaLua) {
+            game.setScreen(new LunarScreen(game, status));
+            dispose();
+            return;
+        }
 
-        handleInput(delta);
-        updateLogica(delta);
-        updateCamera();
-        particleManager.update(delta);
+        // Tecla de pausa/menu: ESC alterna entre pausado/rodando (igual à Lua)
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
+            pausado = !pausado;
+        }
 
-        timerTempestade -= delta;
-        if (timerTempestade <= 0f) {
-            particleManager.spawnPoeira(MathUtils.random(0, WORLD_WIDTH), MathUtils.random(0, WORLD_HEIGHT));
-            timerTempestade = 0.15f;
+        if (pausado) {
+            // Enquanto pausado, o jogo congela. M salva e volta pro menu principal.
+            if (Gdx.input.isKeyJustPressed(Input.Keys.M)) {
+                SaveManager.salvarJogo(status, missao);
+                game.setScreen(new MenuScreen(game));
+                dispose();
+                return;
+            }
+        } else {
+            handleInput(delta);
+            updateLogica(delta);
+            updateCamera();
+            particleManager.update(delta);
+
+            // MELHORIA 1: Quest Tracker
+            missao.setEtapa(MissionState.calcularEtapa(status));
+            status.missaoEtapa = missao.getEtapa();
+
+            timerTempestade -= delta;
+            if (timerTempestade <= 0f) {
+                particleManager.spawnPoeira(MathUtils.random(0, WORLD_WIDTH), MathUtils.random(0, WORLD_HEIGHT));
+                timerTempestade = 0.15f;
+            }
         }
 
         Gdx.gl.glClearColor(0.42f, 0.16f, 0.08f, 1f);
@@ -176,6 +236,15 @@ public class MarsScreen implements Screen {
         shapeRenderer.setColor(Color.BROWN);
         for (ObstaculoPedra pedra : pedrasMarte) {
             shapeRenderer.rect(pedra.bounds.x, pedra.bounds.y, pedra.bounds.width, pedra.bounds.height);
+        }
+
+        shapeRenderer.setColor(portalRetorno.ativo ? Color.MAGENTA : Color.DARK_GRAY);
+        shapeRenderer.rect(portalRetorno.bounds.x, portalRetorno.bounds.y, portalRetorno.bounds.width, portalRetorno.bounds.height);
+
+        for (Item item : itensChao) {
+            if (item.coletado) continue;
+            shapeRenderer.setColor(item.type == ItemType.MUNICAO ? Color.GOLD : Color.CYAN);
+            shapeRenderer.rect(item.bounds.x, item.bounds.y, item.bounds.width, item.bounds.height);
         }
 
         if (combatStarted && inimigoRegion == null) {
@@ -242,12 +311,52 @@ public class MarsScreen implements Screen {
 
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
+        font.getData().setScale(1.1f);
+
+        font.setColor(portalRetorno.ativo ? Color.MAGENTA : Color.GRAY);
+        font.draw(batch, "Portal para a Lua (E)", portalRetorno.bounds.x - 30, portalRetorno.bounds.y + portalRetorno.bounds.height + 20);
+
         font.setColor(Color.WHITE);
-        font.draw(batch, "MARTE - MISSAO ARTEMIS (WAVE " + currentWave + "/3)", camera.position.x - 220, camera.position.y + 330);
+        for (Item item : itensChao) {
+            if (item.coletado) continue;
+            String texto = item.type == ItemType.MUNICAO ? "Municao" : "Kit de Vida";
+            font.draw(batch, texto, item.bounds.x - 5, item.bounds.y + item.bounds.height + 15);
+        }
 
-        font.setColor(Color.RED);
-        font.draw(batch, "VIDA: " + playerVida + " | SOBREVIVA AOS INIMIGOS!", camera.position.x - 220, camera.position.y + 300);
+        font.getData().setScale(1f);
+        batch.end();
 
+        hud.render(shapeRenderer, batch, font, hudCamera, status, missao.getAtual(),
+            "MARTE - WAVE " + currentWave + "/3", 720);
+
+        if (pausado) {
+            desenharPausa();
+        }
+    }
+
+    /** Botão de pausa: overlay escuro com o texto e as opções de ESC/M (igual à LunarScreen). */
+    private void desenharPausa() {
+        hudCamera.update();
+
+        shapeRenderer.setProjectionMatrix(hudCamera.combined);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(0f, 0f, 0f, 0.6f);
+        shapeRenderer.rect(0, 0, 1280, 720);
+        shapeRenderer.end();
+
+        batch.setProjectionMatrix(hudCamera.combined);
+        batch.begin();
+
+        font.setColor(Color.WHITE);
+        font.getData().setScale(2.4f);
+        layoutPausa.setText(font, "PAUSADO");
+        font.draw(batch, layoutPausa, 640 - layoutPausa.width / 2f, 420);
+
+        font.getData().setScale(1.2f);
+        layoutPausa.setText(font, "ESC para continuar  |  M para salvar e voltar ao menu");
+        font.draw(batch, layoutPausa, 640 - layoutPausa.width / 2f, 350);
+
+        font.getData().setScale(1f);
         batch.end();
     }
 
@@ -277,17 +386,38 @@ public class MarsScreen implements Screen {
         player.x = Math.max(0, Math.min(player.x, WORLD_WIDTH - player.width));
         player.y = Math.max(0, Math.min(player.y, WORLD_HEIGHT - player.height));
 
-        if (status.armaCraftada && Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) {
-            calculaPosicaoMouse();
-            float centroX = player.x + player.width / 2f;
-            float centroY = player.y + player.height / 2f;
+        // Cooldown da arma precisa "andar" mesmo em Marte, onde o oxigenio nao eh consumido
+        status.atualizarCombate(delta);
 
-            Vector2 direcao = new Vector2(mousePos.x - centroX, mousePos.y - centroY).nor();
-            tirosJogador.add(new Projilel(centroX, centroY, direcao, 600f));
+        if (status.armaCraftada && Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) {
+            if (status.podeAtirar()) {
+                calculaPosicaoMouse();
+                float centroX = player.x + player.width / 2f;
+                float centroY = player.y + player.height / 2f;
+
+                Vector2 direcao = new Vector2(mousePos.x - centroX, mousePos.y - centroY).nor();
+                tirosJogador.add(new Projilel(centroX, centroY, direcao, 600f));
+            }
+        }
+
+        // MELHORIA 6: portal bidirecional de volta pra Lua, com checkpoint + save
+        if (Gdx.input.isKeyJustPressed(Input.Keys.E) && portalRetorno.ativo && player.overlaps(portalRetorno.bounds)) {
+            status.lastMarteX = player.x;
+            status.lastMarteY = player.y;
+            status.faseAtual = "LUA";
+            SaveManager.salvarJogo(status, missao);
+            voltarParaLua = true;
+        }
+
+        // MELHORIA 4: salvar manualmente a qualquer momento
+        if (Gdx.input.isKeyJustPressed(Input.Keys.F5)) {
+            SaveManager.salvarJogo(status, missao);
         }
     }
 
     private void updateLogica(float delta) {
+        checkItensChao();
+
         for (int i = tirosJogador.size - 1; i >= 0; i--) {
             Projilel t = tirosJogador.get(i);
             t.pos.mulAdd(t.vel, delta);
@@ -303,6 +433,11 @@ public class MarsScreen implements Screen {
                         e.vivo = false;
                         t.ativo = false;
                         particleManager.spawnColeta(e.bounds.x, e.bounds.y);
+                        status.inimigosDerrotados++;
+
+                        // MELHORIA 3: drop ao morrer
+                        ItemType tipoDrop = MathUtils.randomBoolean(0.6f) ? ItemType.MUNICAO : ItemType.OXIGENIO;
+                        itensChao.add(new Item(e.bounds.x, e.bounds.y, tipoDrop));
                         break;
                     }
                 }
@@ -327,8 +462,9 @@ public class MarsScreen implements Screen {
                 e.bounds.y += direcaoPlayer.y * velocidadeInimigo * delta;
 
                 if (e.tipo == TipoInimigo.MELEE && player.overlaps(e.bounds)) {
-                    playerVida -= 15 * delta;
-                    if (playerVida <= 0) {
+                    status.hp -= 15f * delta;
+                    if (status.hp <= 0f) {
+                        status.hp = 0f;
                         transicaoGameOverPendente = true;
                         return;
                     }
@@ -348,9 +484,10 @@ public class MarsScreen implements Screen {
                 ti.pos.mulAdd(ti.vel, delta);
 
                 if (player.contains(ti.pos.x, ti.pos.y)) {
-                    playerVida -= 15;
+                    status.hp -= 15f;
                     ti.ativo = false;
-                    if (playerVida <= 0) {
+                    if (status.hp <= 0f) {
+                        status.hp = 0f;
                         transicaoGameOverPendente = true;
                         return;
                     }
@@ -371,8 +508,25 @@ public class MarsScreen implements Screen {
         }
     }
 
+    private void checkItensChao() {
+        for (Item item : itensChao) {
+            if (item.coletado) continue;
+            if (player.overlaps(item.bounds)) {
+                item.coletado = true;
+                particleManager.spawnColeta(item.bounds.x, item.bounds.y);
+
+                if (item.type == ItemType.MUNICAO) {
+                    status.municao += 5;
+                } else if (item.type == ItemType.OXIGENIO) {
+                    status.hp = Math.min(100f, status.hp + 25f);
+                }
+            }
+        }
+    }
+
     private void proximaWave() {
         currentWave++;
+        status.marteWaveAtual = currentWave; // MELHORIA 6: checkpoint da wave
         combatStarted = true;
         inimigos.clear();
         tirosInimigos.clear();

@@ -1,17 +1,33 @@
 package com.Echoes.Jogo.Entities;
 
+import com.Echoes.Jogo.Main;
+import com.Echoes.Jogo.Screen.LunarScreen;
+import com.Echoes.Jogo.Screen.MarsScreen;
 import com.badlogic.gdx.math.Rectangle;
 
-/**
- * O portal é tipo a "porta" que leva da Lua pra Marte.
- * Ele só deixa passar (ativo = true) se as condições da missão
- * forem cumpridas — isso a gente vai controlar de fora, na LunarScreen.
- */
 public class Portal {
-    public Rectangle bounds;
-    public boolean ativo = false; // false = bloqueado, true = liberado
 
-    public Portal(float x, float y, float width, float height) {
-        this.bounds = new Rectangle(x, y, width, height);
+    public Rectangle bounds;
+    public boolean ativo = false;
+
+    public Portal(float x, float y) {
+        this.bounds = new Rectangle(x, y, 64, 64);
+    }
+
+    // Portal bidirecional atualizado para remover dependências não declaradas
+    public void verificarTransicao(Main game, Rectangle playerBounds, PlayerStatus status) {
+        if (ativo && playerBounds.overlaps(this.bounds)) {
+            if (status.faseAtual.equals("LUA")) {
+                status.lastLuaX = playerBounds.x;
+                status.lastLuaY = playerBounds.y;
+                status.faseAtual = "MARTE";
+                game.setScreen(new MarsScreen(game, status));
+            } else {
+                status.lastMarteX = playerBounds.x;
+                status.lastMarteY = playerBounds.y;
+                status.faseAtual = "LUA";
+                game.setScreen(new LunarScreen(game, status));
+            }
+        }
     }
 }

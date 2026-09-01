@@ -8,93 +8,72 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 
 /**
- * HUD atualizado com inventário completo, status de reparos e objetivo dinâmico.
+ * HUD fixa (não anda com a câmera do mundo) — compartilhada entre a Lua e Marte,
+ * pra manter as informações do jogador sempre com a mesma cara (MELHORIA 5).
  */
 public class Hud {
 
-    private static final float PAINEL_X = 16;
-    private static final float PAINEL_LARGURA = 360;
-    private static final float PAINEL_ALTURA = 260; // Aumentado para caber mais texto
-
     public void render(ShapeRenderer shapeRenderer, SpriteBatch batch, BitmapFont font,
-                       OrthographicCamera hudCamera, PlayerStatus status, float worldHeight) {
+                       OrthographicCamera hudCamera, PlayerStatus status,
+                       String missaoAtual, String extraLinha, int screenHeight) {
 
-        float painelY = worldHeight - PAINEL_ALTURA - 16;
+        hudCamera.update();
 
-        // --- Painel de fundo ---
+        int linhas = 6 + (extraLinha != null ? 1 : 0);
+        float altura = 25f + linhas * 27f;
+
+        // Painel translúcido atrás do texto, pra ficar legível sobre qualquer fundo
         shapeRenderer.setProjectionMatrix(hudCamera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        shapeRenderer.setColor(0f, 0f, 0f, 0.65f);
-        shapeRenderer.rect(PAINEL_X, painelY, PAINEL_LARGURA, PAINEL_ALTURA);
-
-        // --- Barra de oxigênio ---
-        float barraX = PAINEL_X + 16;
-        float barraY = painelY + PAINEL_ALTURA - 30;
-        float barraLargura = PAINEL_LARGURA - 32;
-        float barraAltura = 14;
-
-        shapeRenderer.setColor(0.2f, 0.2f, 0.2f, 1f); // fundo da barra
-        shapeRenderer.rect(barraX, barraY, barraLargura, barraAltura);
-
-        float percentual = status.oxigenio / 100f;
-        if (percentual > 0.5f) shapeRenderer.setColor(Color.GREEN);
-        else if (percentual > 0.2f) shapeRenderer.setColor(Color.YELLOW);
-        else shapeRenderer.setColor(Color.RED);
-        shapeRenderer.rect(barraX, barraY, barraLargura * percentual, barraAltura); // preenchimento
-
+        shapeRenderer.setColor(0f, 0f, 0f, 0.45f);
+        shapeRenderer.rect(15, screenHeight - altura - 10, 460, altura);
         shapeRenderer.end();
 
-        // --- Textos ---
         batch.setProjectionMatrix(hudCamera.combined);
         batch.begin();
-        font.getData().setScale(0.9f); // Texto ligeiramente menor para caber tudo
 
+        font.getData().setScale(1f);
+        float y = screenHeight - 30;
+
+        // Linha 1: Oxigênio
+        font.setColor(status.oxigenio <= 25f ? Color.RED : Color.CYAN);
+        font.draw(batch, "O2: " + (int) status.oxigenio + "%", 30, y);
+        y -= 27f;
+
+        // Linha 2: HP
+        font.setColor(status.hp <= 25f ? Color.RED : Color.WHITE);
+        font.draw(batch, "HP: " + (int) status.hp, 30, y);
+        y -= 27f;
+
+        // Linha 3: Combate (Arma e Munição) — igual na Lua e em Marte
         font.setColor(Color.WHITE);
-        font.draw(batch, "OXIGENIO", barraX, barraY + barraAltura + 14);
+        String armaStatus = status.armaCraftada ? "SIM" : "NAO";
+        font.draw(batch, "MUNICAO: " + status.municao + " | ARMA: " + armaStatus, 30, y);
+        y -= 27f;
 
-        float textY = barraY - 15;
-        font.draw(batch, "Comida: " + status.comida + " | Gelo: " + status.inventarioGelo, barraX, textY);
+        // Linha 4: Reparos (Estufa e Energia)
+        String estufaStatus = status.estufaReparada ? "ON" : "OFF";
+        String energiaStatus = status.energiaReparada ? "ON" : "OFF";
+        font.draw(batch, "ESTUFA: " + estufaStatus + " | ENERGIA: " + energiaStatus, 30, y);
+        y -= 27f;
 
-        textY -= 20;
-        font.draw(batch, "Pecas: Antena(" + status.pecaAntena + ") Gerador(" + status.pecaGerador + ")", barraX, textY);
+        // Linha 5: Reparos (Extração e Comunicação)
+        String extracaoStatus = status.extracaoReparada ? "ON" : "OFF";
+        String comStatus = status.comunicacaoReparada ? "ON" : "OFF";
+        font.draw(batch, "EXTRACAO: " + extracaoStatus + " | COMUNICACAO: " + comStatus, 30, y);
+        y -= 27f;
 
-        textY -= 20;
-        font.draw(batch, "       Usina(" + status.pecaUsina + ") Estufa(" + status.pecaEstufa + ")", barraX, textY);
-
-        textY -= 20;
-        font.draw(batch, "Partes da Arma: A(" + status.armaParteA + ") B(" + status.armaParteB + ") C(" + status.armaParteC + ")", barraX, textY);
-
-        textY -= 25;
-        font.setColor(Color.CYAN);
-        font.draw(batch, "REPAROS: " +
-            (status.comunicacaoReparada ? "[ON]" : "[OFF]") + " Comunicacao | " +
-            (status.energiaReparada ? "[ON]" : "[OFF]") + " Energia", barraX, textY);
-
-        textY -= 20;
-        font.draw(batch, "         " +
-            (status.extracaoReparada ? "[ON]" : "[OFF]") + " Extracao    | " +
-            (status.estufaReparada ? "[ON]" : "[OFF]") + " Estufa", barraX, textY);
-
-        textY -= 25;
-        font.setColor(status.armaCraftada ? Color.GREEN : Color.RED);
-        font.draw(batch, "ARMA CRAFTADA: " + (status.armaCraftada ? "SIM" : "NAO"), barraX, textY);
-
-        // --- Objetivo Dinâmico ---
-        textY -= 25;
+        // Linha 6: Quest Tracker (MELHORIA 1)
         font.setColor(Color.YELLOW);
-        String objetivo = "Objetivo: ";
-        boolean reparosOks = status.comunicacaoReparada && status.energiaReparada && status.extracaoReparada && status.estufaReparada;
+        font.draw(batch, "MISSAO: " + missaoAtual, 30, y);
+        y -= 27f;
 
-        if (!reparosOks) {
-            objetivo += "Coletar pecas e reparar as 4 estacoes.";
-        } else if (!status.armaCraftada) {
-            objetivo += "Coletar partes (A,B,C) e craftar Arma na Base.";
-        } else {
-            objetivo += "Portal liberado! Siga para Marte.";
+        // Linha extra opcional — Marte usa pra mostrar a wave atual
+        if (extraLinha != null) {
+            font.setColor(Color.ORANGE);
+            font.draw(batch, extraLinha, 30, y);
         }
-        font.draw(batch, objetivo, barraX, textY);
 
-        font.getData().setScale(1f); // Restaura escala
         batch.end();
     }
 }

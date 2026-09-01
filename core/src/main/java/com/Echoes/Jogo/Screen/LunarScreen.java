@@ -1,13 +1,16 @@
 package com.Echoes.Jogo.Screen;
 
 import com.Echoes.Jogo.Entities.Base;
+import com.Echoes.Jogo.Entities.Inimigo;
 import com.Echoes.Jogo.Entities.Item;
 import com.Echoes.Jogo.Entities.ItemType;
 import com.Echoes.Jogo.Entities.PlayerStatus;
 import com.Echoes.Jogo.Entities.Portal;
 import com.Echoes.Jogo.Main;
 import com.Echoes.Jogo.Managers.GameAssets;
+import com.Echoes.Jogo.Managers.MissionState;
 import com.Echoes.Jogo.Managers.ParticleManager;
+import com.Echoes.Jogo.Managers.SaveManager;
 import com.Echoes.Jogo.Ui.Hud;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
@@ -16,9 +19,11 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.viewport.FitViewport;
@@ -45,6 +50,7 @@ public class LunarScreen implements Screen {
     private SpriteBatch batch;
     private ShapeRenderer shapeRenderer;
     private BitmapFont font;
+    private final GlyphLayout layoutPausa = new GlyphLayout();
 
     private Rectangle player;
     private float playerSpeed = 220f;
@@ -53,6 +59,10 @@ public class LunarScreen implements Screen {
     private List<Item> itens;
     private PlayerStatus status;
     private Portal portal;
+    private MissionState missao;
+
+    // Botão de pausa (ESC)
+    private boolean pausado = false;
 
     private static class ObstaculoPedra {
         public Rectangle bounds;
@@ -74,15 +84,8 @@ public class LunarScreen implements Screen {
     }
     private List<Estacao> estacoes;
 
-    private static class InimigoLunar {
-        public Rectangle bounds;
-        public float speed = 90f;
-        public int hp = 100; // HP para permitir destruição
-        public InimigoLunar(float x, float y) {
-            this.bounds = new Rectangle(x, y, 52, 52);
-        }
-    }
-    private List<InimigoLunar> inimigos;
+    // MELHORIA 3: agora usa a entidade Inimigo de verdade (patrulha/persegue + drop)
+    private List<Inimigo> inimigos;
 
     private GameAssets assets;
     private ParticleManager particleManager;
@@ -95,8 +98,9 @@ public class LunarScreen implements Screen {
     private float timerPoeira = 0f;
     private boolean entrarEmMarte = false;
 
-    public LunarScreen(Main game) {
+    public LunarScreen(Main game, PlayerStatus status) {
         this.game = game;
+        this.status = (status != null) ? status : new PlayerStatus();
     }
 
     @Override
@@ -121,9 +125,13 @@ public class LunarScreen implements Screen {
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
 
-        player = new Rectangle(WORLD_WIDTH / 2f - 32, WORLD_HEIGHT / 2f - 32, 64, 64);
+        // MELHORIA 6: player nasce na posição do checkpoint (padrão = centro do mapa)
+        player = new Rectangle(status.lastLuaX, status.lastLuaY, 64, 64);
         base = new Base(100, 100, 180, 180);
-        portal = new Portal(2350, 1200, 110, 110);
+        portal = new Portal(2350, 1200);
+
+        missao = new MissionState();
+        missao.setEtapa(status.missaoEtapa);
 
         pedras = new ArrayList<>();
         pedras.add(new ObstaculoPedra(400, 300, 150, 100));
@@ -154,12 +162,11 @@ public class LunarScreen implements Screen {
         estacoes.add(new Estacao(1600, 800, TipoEstacao.USINA));
         estacoes.add(new Estacao(2000, 500, TipoEstacao.ESTUFA));
 
+        // MELHORIA 3: mistura de comportamentos (patrulha e persegue)
         inimigos = new ArrayList<>();
-        inimigos.add(new InimigoLunar(600, 800));
-        inimigos.add(new InimigoLunar(1500, 300));
-        inimigos.add(new InimigoLunar(2100, 1000));
-
-        status = new PlayerStatus();
+        inimigos.add(new Inimigo(600, 800, Inimigo.TipoIA.PATRULHA));
+        inimigos.add(new Inimigo(1500, 300, Inimigo.TipoIA.PERSEGUE));
+        inimigos.add(new Inimigo(2100, 1000, Inimigo.TipoIA.PATRULHA));
 
         assets = new GameAssets();
         assets.carregar();
@@ -175,13 +182,30 @@ public class LunarScreen implements Screen {
 
     @Override
     public void render(float delta) {
-        if (!status.missaoFalhou) {
+        // Botão de pausa: ESC alterna entre pausado/rodando
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
+            pausado = !pausado;
+        }
+
+        if (pausado) {
+            // Enquanto pausado, o jogo congela. M salva e volta pro menu.
+            if (Gdx.input.isKeyJustPressed(Input.Keys.M)) {
+                SaveManager.salvarJogo(status, missao);
+                game.setScreen(new MenuScreen(game));
+                dispose();
+                return;
+            }
+        } else if (!status.missaoFalhou) {
             handleInput(delta);
             updateInimigos(delta);
             updateCamera();
             checkColisoes(delta);
             status.consumirOxigenio(delta);
             particleManager.update(delta);
+
+            // MELHORIA 1: Quest Tracker sempre sincronizado com o progresso real
+            missao.setEtapa(MissionState.calcularEtapa(status));
+            status.missaoEtapa = missao.getEtapa();
         }
 
         if (status.missaoFalhou) {
@@ -199,7 +223,37 @@ public class LunarScreen implements Screen {
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
         desenharMundo();
-        hud.render(shapeRenderer, batch, font, hudCamera, status, 720);
+        hud.render(shapeRenderer, batch, font, hudCamera, status, missao.getAtual(), null, 720);
+
+        if (pausado) {
+            desenharPausa();
+        }
+    }
+
+    /** Botão de pausa: overlay escuro com o texto e as opções de ESC/M. */
+    private void desenharPausa() {
+        hudCamera.update();
+
+        shapeRenderer.setProjectionMatrix(hudCamera.combined);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(0f, 0f, 0f, 0.6f);
+        shapeRenderer.rect(0, 0, 1280, 720);
+        shapeRenderer.end();
+
+        batch.setProjectionMatrix(hudCamera.combined);
+        batch.begin();
+
+        font.setColor(Color.WHITE);
+        font.getData().setScale(2.4f);
+        layoutPausa.setText(font, "PAUSADO");
+        font.draw(batch, layoutPausa, 640 - layoutPausa.width / 2f, 420);
+
+        font.getData().setScale(1.2f);
+        layoutPausa.setText(font, "ESC para continuar  |  M para salvar e voltar ao menu");
+        font.draw(batch, layoutPausa, 640 - layoutPausa.width / 2f, 350);
+
+        font.getData().setScale(1f);
+        batch.end();
     }
 
     private void desenharMundo() {
@@ -234,8 +288,9 @@ public class LunarScreen implements Screen {
             shapeRenderer.rect(est.bounds.x, est.bounds.y, est.bounds.width, est.bounds.height);
         }
 
-        shapeRenderer.setColor(Color.PURPLE);
-        for (InimigoLunar ini : inimigos) {
+        // MELHORIA 3: cor diferente por comportamento
+        for (Inimigo ini : inimigos) {
+            shapeRenderer.setColor(ini.tipo == Inimigo.TipoIA.PERSEGUE ? Color.SCARLET : Color.PURPLE);
             shapeRenderer.rect(ini.bounds.x, ini.bounds.y, ini.bounds.width, ini.bounds.height);
         }
 
@@ -257,6 +312,7 @@ public class LunarScreen implements Screen {
                 case ARMA_PARTE_A:
                 case ARMA_PARTE_B:
                 case ARMA_PARTE_C: shapeRenderer.setColor(Color.SCARLET); break;
+                case MUNICAO: shapeRenderer.setColor(Color.GOLD); break;
             }
             shapeRenderer.rect(item.bounds.x, item.bounds.y, item.bounds.width, item.bounds.height);
         }
@@ -321,16 +377,17 @@ public class LunarScreen implements Screen {
                 case OXIGENIO: texto = "O2"; break;
                 case GELO: texto = "Gelo"; break;
                 case COMIDA: texto = "Racao"; break;
+                case MUNICAO: texto = "Municao"; break;
             }
             font.draw(batch, texto, item.bounds.x - 5, item.bounds.y + item.bounds.height + 15);
         }
 
         font.setColor(Color.RED);
-        for (InimigoLunar ini : inimigos) {
-            font.draw(batch, "PERIGO!", ini.bounds.x - 10, ini.bounds.y + ini.bounds.height + 15);
+        for (Inimigo ini : inimigos) {
+            String texto = ini.tipo == Inimigo.TipoIA.PERSEGUE ? "PERSEGUINDO!" : "PATRULHANDO";
+            font.draw(batch, texto, ini.bounds.x - 15, ini.bounds.y + ini.bounds.height + 15);
         }
 
-        // Feedback textual do Portal (Etapa 1)
         font.setColor(portal.ativo ? Color.MAGENTA : Color.GRAY);
         String textoPortal = portal.ativo ? "Portal online" : "Portal bloqueado: faltam reparos/arma";
         font.draw(batch, textoPortal, portal.bounds.x - 20, portal.bounds.y + portal.bounds.height + 25);
@@ -374,27 +431,35 @@ public class LunarScreen implements Screen {
             }
         }
 
-        // Combate na fase lunar (Etapa 4 e 5)
         if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
             float attackRange = 120f;
             float playerCx = player.x + player.width / 2f;
             float playerCy = player.y + player.height / 2f;
 
             for (int i = inimigos.size() - 1; i >= 0; i--) {
-                InimigoLunar ini = inimigos.get(i);
+                Inimigo ini = inimigos.get(i);
                 float iniCx = ini.bounds.x + ini.bounds.width / 2f;
                 float iniCy = ini.bounds.y + ini.bounds.height / 2f;
 
                 if (Vector2.dst(playerCx, playerCy, iniCx, iniCy) <= attackRange) {
                     if (status.armaCraftada) {
-                        // Destrói o inimigo
-                        particleManager.spawnColeta(ini.bounds.x, ini.bounds.y);
-                        inimigos.remove(i);
+                        // Só ataca de verdade se tiver municao disponivel e o cooldown tiver liberado
+                        if (status.podeAtirar()) {
+                            ini.tomarDano(999); // arma craftada mata de um golpe
+                            particleManager.spawnColeta(ini.bounds.x, ini.bounds.y);
+
+                            // MELHORIA 3: drop de item ao morrer
+                            itens.add(new Item(ini.bounds.x, ini.bounds.y, ini.getDrop()));
+
+                            inimigos.remove(i);
+                            status.inimigosDerrotados++;
+                        }
                     } else {
-                        // Empurra o inimigo temporariamente
                         Vector2 direcao = new Vector2(iniCx - playerCx, iniCy - playerCy).nor();
                         ini.bounds.x += direcao.x * 150f;
                         ini.bounds.y += direcao.y * 150f;
+                        ini.bounds.x = MathUtils.clamp(ini.bounds.x, 0, WORLD_WIDTH - ini.bounds.width);
+                        ini.bounds.y = MathUtils.clamp(ini.bounds.y, 0, WORLD_HEIGHT - ini.bounds.height);
                     }
                 }
             }
@@ -404,7 +469,6 @@ public class LunarScreen implements Screen {
             if (player.overlaps(base.bounds)) {
                 status.processarGelo();
 
-                // Craftar a Arma na base Lunar (Etapa 5)
                 if (status.armaParteA > 0 && status.armaParteB > 0 && status.armaParteC > 0 && !status.armaCraftada) {
                     status.armaCraftada = true;
                     status.armaParteA--;
@@ -441,26 +505,33 @@ public class LunarScreen implements Screen {
                 }
             }
 
+            // MELHORIA 6: portal bidirecional com checkpoint + save automatico
             if (portal.ativo && player.overlaps(portal.bounds)) {
+                status.lastLuaX = player.x;
+                status.lastLuaY = player.y;
+                status.faseAtual = "MARTE";
+                SaveManager.salvarJogo(status, missao);
                 entrarEmMarte = true;
             }
+        }
+
+        // MELHORIA 4: salvar manualmente a qualquer momento
+        if (Gdx.input.isKeyJustPressed(Input.Keys.F5)) {
+            SaveManager.salvarJogo(status, missao);
         }
 
         portal.ativo = checkPortalLiberado();
     }
 
     private void updateInimigos(float delta) {
-        float centroPlayerX = player.x + player.width / 2f;
-        float centroPlayerY = player.y + player.height / 2f;
-
-        for (InimigoLunar inimigo : inimigos) {
-            float centroInimigoX = inimigo.bounds.x + inimigo.bounds.width / 2f;
-            float centroInimigoY = inimigo.bounds.y + inimigo.bounds.height / 2f;
-
-            Vector2 direcao = new Vector2(centroPlayerX - centroInimigoX, centroPlayerY - centroInimigoY).nor();
-
-            inimigo.bounds.x += direcao.x * inimigo.speed * delta;
-            inimigo.bounds.y += direcao.y * inimigo.speed * delta;
+        // MELHORIA 3: cada inimigo cuida do proprio comportamento (patrulha ou persegue)
+        for (Inimigo inimigo : inimigos) {
+            if (inimigo.ativo) {
+                inimigo.update(delta, player);
+                // Garante que o inimigo nunca saia dos limites do mapa
+                inimigo.bounds.x = MathUtils.clamp(inimigo.bounds.x, 0, WORLD_WIDTH - inimigo.bounds.width);
+                inimigo.bounds.y = MathUtils.clamp(inimigo.bounds.y, 0, WORLD_HEIGHT - inimigo.bounds.height);
+            }
         }
     }
 
@@ -479,28 +550,51 @@ public class LunarScreen implements Screen {
                     case OXIGENIO: status.oxigenio = Math.min(100f, status.oxigenio + 20f); break;
                     case COMIDA: status.comida++; break;
                     case GELO: status.inventarioGelo++; break;
-                    case PECA_ANTENA: status.pecaAntena++; break;
-                    case PECA_GERADOR: status.pecaGerador++; break;
-                    case PECA_USINA: status.pecaUsina++; break;
-                    case PECA_ESTUFA: status.pecaEstufa++; break;
-                    case ARMA_PARTE_A: status.armaParteA++; break;
-                    case ARMA_PARTE_B: status.armaParteB++; break;
-                    case ARMA_PARTE_C: status.armaParteC++; break;
+                    case PECA_ANTENA: status.pecaAntena++; status.colPecaAntena = true; break;
+                    case PECA_GERADOR: status.pecaGerador++; status.colPecaGerador = true; break;
+                    case PECA_USINA: status.pecaUsina++; status.colPecaUsina = true; break;
+                    case PECA_ESTUFA: status.pecaEstufa++; status.colPecaEstufa = true; break;
+                    case ARMA_PARTE_A: status.armaParteA++; status.colArmaParteA = true; break;
+                    case ARMA_PARTE_B: status.armaParteB++; status.colArmaParteB = true; break;
+                    case ARMA_PARTE_C: status.armaParteC++; status.colArmaParteC = true; break;
+                    case MUNICAO: status.municao += 5; break;
                 }
             }
         }
 
-        for (InimigoLunar inimigo : inimigos) {
-            if (player.overlaps(inimigo.bounds)) {
-                status.oxigenio -= 35f * delta;
+        // CORRIGIDO (bug da missão errada): marca que cada peça já foi coletada ao menos
+        // uma vez, mesmo que o jogador já tenha usado ela num reparo/craft antes de
+        // terminar de coletar as outras. Antes disso só funcionava se ele pegasse as
+        // 7 peças de uma vez, sem reparar nada no meio do caminho.
+        if (!status.pecasColetadas &&
+            status.colPecaAntena && status.colPecaGerador && status.colPecaUsina && status.colPecaEstufa &&
+            status.colArmaParteA && status.colArmaParteB && status.colArmaParteC) {
+            status.pecasColetadas = true;
+        }
+
+        for (Inimigo inimigo : inimigos) {
+            if (inimigo.ativo && player.overlaps(inimigo.bounds)) {
+                status.hp -= 35f * delta;
                 particleManager.spawnPoeira(player.x + player.width/2f, player.y + player.height/2f);
 
-                // Empurra o inimigo para não drenar direto o oxigênio sem o jogador reagir
-                inimigo.bounds.x += (inimigo.bounds.x - player.x) * 2f;
-                inimigo.bounds.y += (inimigo.bounds.y - player.y) * 2f;
+                // CORRIGIDO (bug dos inimigos de patrulha): o empurrão antigo não era
+                // normalizado e crescia a cada frame, chutando o inimigo pra fora do
+                // mapa quase instantaneamente e quebrando a rota de patrulha dele.
+                Vector2 direcaoEmpurrao = new Vector2(inimigo.bounds.x - player.x, inimigo.bounds.y - player.y);
+                if (direcaoEmpurrao.len2() > 0.0001f) {
+                    direcaoEmpurrao.nor();
+                } else {
+                    direcaoEmpurrao.set(1f, 0f);
+                }
+                float velocidadeEmpurrao = 260f;
+                inimigo.bounds.x += direcaoEmpurrao.x * velocidadeEmpurrao * delta;
+                inimigo.bounds.y += direcaoEmpurrao.y * velocidadeEmpurrao * delta;
 
-                if (status.oxigenio <= 0f) {
-                    status.oxigenio = 0f;
+                inimigo.bounds.x = MathUtils.clamp(inimigo.bounds.x, 0, WORLD_WIDTH - inimigo.bounds.width);
+                inimigo.bounds.y = MathUtils.clamp(inimigo.bounds.y, 0, WORLD_HEIGHT - inimigo.bounds.height);
+
+                if (status.hp <= 0f) {
+                    status.hp = 0f;
                     status.missaoFalhou = true;
                 }
             }
@@ -509,7 +603,7 @@ public class LunarScreen implements Screen {
 
     private boolean checkPortalLiberado() {
         boolean estacoesOks = status.comunicacaoReparada && status.energiaReparada && status.extracaoReparada && status.estufaReparada;
-        boolean armaOk = status.armaCraftada; // Condição: Arma já tem que estar craftada
+        boolean armaOk = status.armaCraftada;
         return estacoesOks && armaOk;
     }
 

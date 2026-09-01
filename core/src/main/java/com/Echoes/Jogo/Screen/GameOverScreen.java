@@ -13,7 +13,7 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 
-/** Tela de derrota — oxigênio zerou. */
+/** Tela de derrota — oxigênio ou energia zerou. */
 public class GameOverScreen implements Screen {
 
     private final Main game;
@@ -42,7 +42,7 @@ public class GameOverScreen implements Screen {
 
     @Override
     public void render(float delta) {
-        if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)) {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER) || Gdx.input.isKeyJustPressed(Input.Keys.M)) {
             game.setScreen(new MenuScreen(game));
             dispose();
             return;
@@ -61,10 +61,10 @@ public class GameOverScreen implements Screen {
         fontTitulo.draw(batch, layout, 640 - layout.width / 2f, 420);
 
         fontTexto.setColor(Color.WHITE);
-        layout.setText(fontTexto, "O oxigenio se esgotou no mapa lunar.");
+        layout.setText(fontTexto, "O oxigenio ou a energia se esgotaram.");
         fontTexto.draw(batch, layout, 640 - layout.width / 2f, 340);
 
-        layout.setText(fontTexto, "Pressione ENTER para voltar ao menu");
+        layout.setText(fontTexto, "Pressione ENTER ou M para voltar ao menu");
         fontTexto.draw(batch, layout, 640 - layout.width / 2f, 280);
 
         batch.end();

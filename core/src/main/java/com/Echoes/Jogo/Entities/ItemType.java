@@ -10,5 +10,6 @@ public enum ItemType {
     PECA_ESTUFA,
     ARMA_PARTE_A,
     ARMA_PARTE_B,
-    ARMA_PARTE_C
+    ARMA_PARTE_C,
+    MUNICAO // MELHORIA 3: Adicionado para o drop dos inimigos
 }
