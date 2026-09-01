@@ -8,24 +8,23 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 
 /**
- * HUD com painel de fundo semi-transparente e barra de oxigênio colorida
- * (verde -> amarelo -> vermelho conforme o nível), em vez de só texto solto.
+ * HUD atualizado com inventário completo, status de reparos e objetivo dinâmico.
  */
 public class Hud {
 
     private static final float PAINEL_X = 16;
-    private static final float PAINEL_LARGURA = 260;
-    private static final float PAINEL_ALTURA = 114;
+    private static final float PAINEL_LARGURA = 360;
+    private static final float PAINEL_ALTURA = 260; // Aumentado para caber mais texto
 
     public void render(ShapeRenderer shapeRenderer, SpriteBatch batch, BitmapFont font,
                        OrthographicCamera hudCamera, PlayerStatus status, float worldHeight) {
 
-        float painelY = worldHeight - 130;
+        float painelY = worldHeight - PAINEL_ALTURA - 16;
 
         // --- Painel de fundo ---
         shapeRenderer.setProjectionMatrix(hudCamera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        shapeRenderer.setColor(0f, 0f, 0f, 0.45f);
+        shapeRenderer.setColor(0f, 0f, 0f, 0.65f);
         shapeRenderer.rect(PAINEL_X, painelY, PAINEL_LARGURA, PAINEL_ALTURA);
 
         // --- Barra de oxigênio ---
@@ -48,19 +47,54 @@ public class Hud {
         // --- Textos ---
         batch.setProjectionMatrix(hudCamera.combined);
         batch.begin();
+        font.getData().setScale(0.9f); // Texto ligeiramente menor para caber tudo
 
         font.setColor(Color.WHITE);
         font.draw(batch, "OXIGENIO", barraX, barraY + barraAltura + 14);
-        font.draw(batch, "Comida: " + status.comida, barraX, barraY - 12);
-        font.draw(batch, "Gelo: " + status.inventarioGelo, barraX, barraY - 32);
-        font.draw(batch, "Agua: " + status.agua + "   Combustivel: " + status.combustivel,
-            barraX, barraY - 52);
 
-        if (status.inventarioGelo > 0) {
-            font.setColor(Color.YELLOW);
-            font.draw(batch, "Pressione E na base para processar gelo", PAINEL_X, 40);
+        float textY = barraY - 15;
+        font.draw(batch, "Comida: " + status.comida + " | Gelo: " + status.inventarioGelo, barraX, textY);
+
+        textY -= 20;
+        font.draw(batch, "Pecas: Antena(" + status.pecaAntena + ") Gerador(" + status.pecaGerador + ")", barraX, textY);
+
+        textY -= 20;
+        font.draw(batch, "       Usina(" + status.pecaUsina + ") Estufa(" + status.pecaEstufa + ")", barraX, textY);
+
+        textY -= 20;
+        font.draw(batch, "Partes da Arma: A(" + status.armaParteA + ") B(" + status.armaParteB + ") C(" + status.armaParteC + ")", barraX, textY);
+
+        textY -= 25;
+        font.setColor(Color.CYAN);
+        font.draw(batch, "REPAROS: " +
+            (status.comunicacaoReparada ? "[ON]" : "[OFF]") + " Comunicacao | " +
+            (status.energiaReparada ? "[ON]" : "[OFF]") + " Energia", barraX, textY);
+
+        textY -= 20;
+        font.draw(batch, "         " +
+            (status.extracaoReparada ? "[ON]" : "[OFF]") + " Extracao    | " +
+            (status.estufaReparada ? "[ON]" : "[OFF]") + " Estufa", barraX, textY);
+
+        textY -= 25;
+        font.setColor(status.armaCraftada ? Color.GREEN : Color.RED);
+        font.draw(batch, "ARMA CRAFTADA: " + (status.armaCraftada ? "SIM" : "NAO"), barraX, textY);
+
+        // --- Objetivo Dinâmico ---
+        textY -= 25;
+        font.setColor(Color.YELLOW);
+        String objetivo = "Objetivo: ";
+        boolean reparosOks = status.comunicacaoReparada && status.energiaReparada && status.extracaoReparada && status.estufaReparada;
+
+        if (!reparosOks) {
+            objetivo += "Coletar pecas e reparar as 4 estacoes.";
+        } else if (!status.armaCraftada) {
+            objetivo += "Coletar partes (A,B,C) e craftar Arma na Base.";
+        } else {
+            objetivo += "Portal liberado! Siga para Marte.";
         }
+        font.draw(batch, objetivo, barraX, textY);
 
+        font.getData().setScale(1f); // Restaura escala
         batch.end();
     }
 }

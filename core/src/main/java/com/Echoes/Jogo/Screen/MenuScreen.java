@@ -57,7 +57,7 @@ public class MenuScreen implements Screen {
         batch.begin();
 
         fontTitulo.setColor(Color.CYAN);
-        layout.setText(fontTitulo, "FASE LUNAR");
+        layout.setText(fontTitulo, "MISSÃO ARTEMIS");
         fontTitulo.draw(batch, layout, 640 - layout.width / 2f, 460);
 
         fontTexto.setColor(Color.WHITE);
