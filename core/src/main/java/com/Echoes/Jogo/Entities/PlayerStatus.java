@@ -94,6 +94,11 @@ public class PlayerStatus {
         hp = Math.min(100f, hp + 20f * delta);
     }
 
+    /** Regenera parte da vida ao trocar de fase (Lua -> Marte -> Tita), via portal. */
+    public void curarAoTrocarFase() {
+        hp = Math.min(100f, hp + 40f);
+    }
+
     public boolean processarGelo() {
         if (inventarioGelo <= 0) return false;
         inventarioGelo--;

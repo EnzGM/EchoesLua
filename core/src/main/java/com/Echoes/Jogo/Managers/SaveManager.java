@@ -4,26 +4,72 @@ import com.Echoes.Jogo.Entities.PlayerStatus;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Preferences;
 
-/**
- * MELHORIA 4: Persistência de Dados (Save/Load da campanha unificada).
- * Um único save cobre Lua e Marte: posição de checkpoint, progresso da
- * missão (Quest Tracker), wave atual em Marte, reparos, munição, etc.
- */
 public class SaveManager {
 
     private static final String PREF_NAME = "EchoesSaveData";
 
+    // Sempre que o FORMATO do save mudar (novos campos, etc.), incremente este numero.
+    // Isso invalida automaticamente qualquer save antigo/incompleto que tenha sobrado
+    // no disco de testes anteriores, sem precisar apagar nada manualmente.
+    private static final int SAVE_VERSION = 2;
+
+    // Ordem de progresso das fases, usada só pra saber qual é "mais avançada".
+    private static final String[] ORDEM_FASES = {"LUA", "MARTE", "TITA"};
+
+    public static boolean hasSave() {
+        Preferences prefs = Gdx.app.getPreferences(PREF_NAME);
+        return prefs.contains("faseAtual") && prefs.getInteger("saveVersion", -1) == SAVE_VERSION;
+    }
+
+    /** Le apenas a fase salva (LUA/MARTE/TITA), sem precisar carregar o PlayerStatus inteiro. Usado no Menu. */
+    public static String getFaseSalva() {
+        Preferences prefs = Gdx.app.getPreferences(PREF_NAME);
+        return prefs.getString("faseAtual", "LUA");
+    }
+
+    private static int rankFase(String fase) {
+        for (int i = 0; i < ORDEM_FASES.length; i++) {
+            if (ORDEM_FASES[i].equals(fase)) return i;
+        }
+        return 0;
+    }
+
+    /**
+     * Atualiza a fase mais avançada que o jogador já alcançou, usada só pra
+     * exibir no botão CONTINUAR do menu. Nunca regride, mesmo se o jogador
+     * voltar pra uma fase anterior (ex.: usar o portal Lua<->Marte de novo
+     * depois de já ter chegado em Tita).
+     */
+    private static void atualizarFaseMaisLonga(String faseAtual) {
+        Preferences prefs = Gdx.app.getPreferences(PREF_NAME);
+        String faseGuardada = prefs.getString("faseMaisLonga", "LUA");
+        if (rankFase(faseAtual) > rankFase(faseGuardada)) {
+            prefs.putString("faseMaisLonga", faseAtual);
+            prefs.flush();
+        }
+    }
+
+    /** Le a fase mais longe que o jogador ja alcancou nesse save. Usado no botao CONTINUAR do Menu. */
+    public static String getFaseMaisLonga() {
+        Preferences prefs = Gdx.app.getPreferences(PREF_NAME);
+        return prefs.getString("faseMaisLonga", "LUA");
+    }
+
     public static void salvarJogo(PlayerStatus status, MissionState missao) {
         Preferences prefs = Gdx.app.getPreferences(PREF_NAME);
 
-        // Missão e Fase
-        prefs.putString("faseAtual", status.faseAtual);
-        prefs.putInteger("missaoEtapa", missao.getEtapa());
-        prefs.putBoolean("pecasColetadas", status.pecasColetadas);
-        prefs.putInteger("marteWave", status.marteWaveAtual);
-        prefs.putInteger("inimigosDerrotados", status.inimigosDerrotados);
+        prefs.putInteger("saveVersion", SAVE_VERSION);
 
-        // CORRIGIDO: rastreamento individual de peças (pro Quest Tracker sobreviver ao save/load)
+        prefs.putFloat("hp", status.hp);
+        prefs.putFloat("oxigenio", status.oxigenio);
+        prefs.putInteger("municao", status.municao);
+
+        prefs.putBoolean("estufaReparada", status.estufaReparada);
+        prefs.putBoolean("energiaReparada", status.energiaReparada);
+        prefs.putBoolean("extracaoReparada", status.extracaoReparada);
+        prefs.putBoolean("comunicacaoReparada", status.comunicacaoReparada);
+        prefs.putBoolean("armaCraftada", status.armaCraftada);
+
         prefs.putBoolean("colPecaAntena", status.colPecaAntena);
         prefs.putBoolean("colPecaGerador", status.colPecaGerador);
         prefs.putBoolean("colPecaUsina", status.colPecaUsina);
@@ -32,54 +78,34 @@ public class SaveManager {
         prefs.putBoolean("colArmaParteB", status.colArmaParteB);
         prefs.putBoolean("colArmaParteC", status.colArmaParteC);
 
-        // Posições (checkpoint do portal bidirecional)
-        prefs.putFloat("lastLuaX", status.lastLuaX);
-        prefs.putFloat("lastLuaY", status.lastLuaY);
         prefs.putFloat("lastMarteX", status.lastMarteX);
         prefs.putFloat("lastMarteY", status.lastMarteY);
+        prefs.putInteger("marteWaveAtual", status.marteWaveAtual);
 
-        // Status e Combate
-        prefs.putFloat("oxigenio", status.oxigenio);
-        prefs.putFloat("hp", status.hp);
-        prefs.putInteger("municao", status.municao);
-
-        // Inventário e Peças
-        prefs.putInteger("comida", status.comida);
-        prefs.putInteger("inventarioGelo", status.inventarioGelo);
-        // CORRIGIDO: agua e combustivel não estavam sendo salvos
-        prefs.putInteger("agua", status.agua);
-        prefs.putInteger("combustivel", status.combustivel);
-        prefs.putInteger("pecaAntena", status.pecaAntena);
-        prefs.putInteger("pecaGerador", status.pecaGerador);
-        prefs.putInteger("pecaUsina", status.pecaUsina);
-        prefs.putInteger("pecaEstufa", status.pecaEstufa);
-        prefs.putInteger("armaA", status.armaParteA);
-        prefs.putInteger("armaB", status.armaParteB);
-        prefs.putInteger("armaC", status.armaParteC);
-
-        // Reparos e Arma Craftada
-        prefs.putBoolean("comunicacao", status.comunicacaoReparada);
-        prefs.putBoolean("energia", status.energiaReparada);
-        prefs.putBoolean("extracao", status.extracaoReparada);
-        prefs.putBoolean("estufa", status.estufaReparada);
-        prefs.putBoolean("armaCraftada", status.armaCraftada);
+        prefs.putString("faseAtual", status.faseAtual != null ? status.faseAtual : "LUA");
 
         prefs.flush();
-        Gdx.app.log("SaveManager", "Jogo salvo com sucesso!");
+
+        // Atualiza (sem regredir) o recorde de fase mais longe alcancada.
+        atualizarFaseMaisLonga(status.faseAtual != null ? status.faseAtual : "LUA");
     }
 
     public static boolean carregarJogo(PlayerStatus status, MissionState missao) {
         Preferences prefs = Gdx.app.getPreferences(PREF_NAME);
 
-        if (!prefs.contains("faseAtual")) {
-            return false; // Não existe save anterior
+        if (!hasSave()) {
+            return false;
         }
 
-        status.faseAtual = prefs.getString("faseAtual", "LUA");
-        missao.setEtapa(prefs.getInteger("missaoEtapa", 0));
-        status.pecasColetadas = prefs.getBoolean("pecasColetadas", false);
-        status.marteWaveAtual = prefs.getInteger("marteWave", 0);
-        status.inimigosDerrotados = prefs.getInteger("inimigosDerrotados", 0);
+        status.hp = prefs.getFloat("hp", 100f);
+        status.oxigenio = prefs.getFloat("oxigenio", 100f);
+        status.municao = prefs.getInteger("municao", 20);
+
+        status.estufaReparada = prefs.getBoolean("estufaReparada", false);
+        status.energiaReparada = prefs.getBoolean("energiaReparada", false);
+        status.extracaoReparada = prefs.getBoolean("extracaoReparada", false);
+        status.comunicacaoReparada = prefs.getBoolean("comunicacaoReparada", false);
+        status.armaCraftada = prefs.getBoolean("armaCraftada", false);
 
         status.colPecaAntena = prefs.getBoolean("colPecaAntena", false);
         status.colPecaGerador = prefs.getBoolean("colPecaGerador", false);
@@ -88,50 +114,30 @@ public class SaveManager {
         status.colArmaParteA = prefs.getBoolean("colArmaParteA", false);
         status.colArmaParteB = prefs.getBoolean("colArmaParteB", false);
         status.colArmaParteC = prefs.getBoolean("colArmaParteC", false);
+        status.pecasColetadas = status.colPecaEstufa && status.colPecaGerador
+            && status.colPecaUsina && status.colPecaAntena;
 
-        status.lastLuaX = prefs.getFloat("lastLuaX", 1280f);
-        status.lastLuaY = prefs.getFloat("lastLuaY", 720f);
-        status.lastMarteX = prefs.getFloat("lastMarteX", 1280f);
-        status.lastMarteY = prefs.getFloat("lastMarteY", 720f);
+        status.lastMarteX = prefs.getFloat("lastMarteX", 100f);
+        status.lastMarteY = prefs.getFloat("lastMarteY", 100f);
+        status.marteWaveAtual = prefs.getInteger("marteWaveAtual", 1);
 
-        status.oxigenio = prefs.getFloat("oxigenio", 100f);
-        status.hp = prefs.getFloat("hp", 100f);
-        status.municao = prefs.getInteger("municao", 10);
+        status.faseAtual = prefs.getString("faseAtual", "LUA");
 
-        status.comida = prefs.getInteger("comida", 0);
-        status.inventarioGelo = prefs.getInteger("inventarioGelo", 0);
-        status.agua = prefs.getInteger("agua", 0);
-        status.combustivel = prefs.getInteger("combustivel", 0);
-        status.pecaAntena = prefs.getInteger("pecaAntena", 0);
-        status.pecaGerador = prefs.getInteger("pecaGerador", 0);
-        status.pecaUsina = prefs.getInteger("pecaUsina", 0);
-        status.pecaEstufa = prefs.getInteger("pecaEstufa", 0);
-        status.armaParteA = prefs.getInteger("armaA", 0);
-        status.armaParteB = prefs.getInteger("armaB", 0);
-        status.armaParteC = prefs.getInteger("armaC", 0);
+        // CORRIGIDO: antes o MissionState passado aqui ficava sempre na etapa 0
+        // (recem-criado), entao ao clicar em "CONTINUAR" o Quest Tracker voltava
+        // pro comeco mesmo o jogador ja tendo progredido. Agora recalculamos a
+        // etapa certa com base no que foi carregado do save.
+        if (missao != null) {
+            missao.setEtapa(MissionState.calcularEtapa(status));
+        }
 
-        status.comunicacaoReparada = prefs.getBoolean("comunicacao", false);
-        status.energiaReparada = prefs.getBoolean("energia", false);
-        status.extracaoReparada = prefs.getBoolean("extracao", false);
-        status.estufaReparada = prefs.getBoolean("estufa", false);
-        status.armaCraftada = prefs.getBoolean("armaCraftada", false);
-
-        status.missaoEtapa = missao.getEtapa();
-
-        Gdx.app.log("SaveManager", "Jogo carregado com sucesso!");
         return true;
     }
 
-    /** Permite habilitar o botão de Continuar no Menu Principal se o jogador já tiver salvo antes. */
-    public static boolean hasSave() {
-        return Gdx.app.getPreferences(PREF_NAME).contains("faseAtual");
-    }
-
-    /** Apaga o save — chamado quando a campanha é concluída (vitória). */
-    public static void apagarSave() {
+    /** Apaga qualquer save existente — usado quando o jogador clica em NOVO JOGO. */
+    public static void limparSave() {
         Preferences prefs = Gdx.app.getPreferences(PREF_NAME);
         prefs.clear();
         prefs.flush();
-        Gdx.app.log("SaveManager", "Save apagado (campanha concluida).");
     }
 }

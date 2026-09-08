@@ -15,7 +15,8 @@ public class MissionState {
         "Reparar as estacoes na base",
         "Craftar a arma na base",
         "Ativar o portal para Marte",
-        "Sobreviver em Marte"
+        "Sobreviver em Marte",
+        "Derrotar o Guardiao de Tita"
     };
 
     public String getAtual() {
@@ -46,8 +47,15 @@ public class MissionState {
      * salvo em PlayerStatus. Chamado a cada frame pelas telas, assim o Quest
      * Tracker fica sempre sincronizado com o estado real do jogo (inclusive
      * depois de um load).
+     *
+     * CORRIGIDO: antes so existia checagem pra "MARTE", entao ao chegar em
+     * Tita a etapa calculada ficava igual a de Marte (4) e o texto mostrado
+     * pro jogador ficava errado ("Sobreviver em Marte" estando em Tita).
      */
     public static int calcularEtapa(PlayerStatus status) {
+        if (status.faseAtual.equals("TITA")) {
+            return 5;
+        }
         if (status.faseAtual.equals("MARTE")) {
             return 4;
         }

@@ -46,6 +46,9 @@ public class MenuScreen implements Screen {
     private Stage stage;
     private final List<Texture> texturasGeradas = new ArrayList<>();
 
+    // Evita usar batch/stage ja descartados no mesmo frame em que o botao foi clicado
+    private boolean saindo = false;
+
     public MenuScreen(Main game) {
         this.game = game;
     }
@@ -76,7 +79,7 @@ public class MenuScreen implements Screen {
         table.padTop(80f);
 
         if (temSave) {
-            TextButton btnContinuar = new TextButton("CONTINUAR", estiloBotao);
+            TextButton btnContinuar = new TextButton(textoContinuarComFase(), estiloBotao);
             btnContinuar.getLabel().setFontScale(1.4f);
             btnContinuar.addListener(new ClickListener() {
                 @Override
@@ -131,12 +134,25 @@ public class MenuScreen implements Screen {
         return new TextureRegionDrawable(new TextureRegion(textura));
     }
 
-    private void iniciarNovoJogo() {
-        game.setScreen(new LunarScreen(game, new PlayerStatus()));
-        dispose();
+    /** Monta o texto do botao com a fase mais longe ja alcancada, ex: "CONTINUAR (MARTE)". */
+    private String textoContinuarComFase() {
+        String fase = SaveManager.getFaseMaisLonga();
+        String faseLabel;
+        switch (fase) {
+            case "MARTE": faseLabel = "MARTE"; break;
+            case "TITA":  faseLabel = "TITA";  break;
+            default:      faseLabel = "LUA";   break;
+        }
+        return "CONTINUAR (" + faseLabel + ")";
     }
 
-    /** MELHORIA 4: carrega o save unificado e manda pra tela certa (Lua ou Marte). */
+    /** NOVO JOGO sempre começa limpo — apaga qualquer save antigo de testes anteriores. */
+    private void iniciarNovoJogo() {
+        SaveManager.limparSave();
+        game.setScreen(new LunarScreen(game, new PlayerStatus()));
+        saindo = true;
+    }
+
     private void continuarJogo() {
         PlayerStatus status = new PlayerStatus();
         MissionState missao = new MissionState();
@@ -151,10 +167,12 @@ public class MenuScreen implements Screen {
 
         if (status.faseAtual.equals("MARTE")) {
             game.setScreen(new MarsScreen(game, status));
+        } else if (status.faseAtual.equals("TITA")) {
+            game.setScreen(new TitanScreen(game, status));
         } else {
             game.setScreen(new LunarScreen(game, status));
         }
-        dispose();
+        saindo = true;
     }
 
     @Override
@@ -165,7 +183,6 @@ public class MenuScreen implements Screen {
         viewport.apply();
         camera.update();
 
-        // Fundo com gradiente vertical, efeito "espaço"
         shapeRenderer.setProjectionMatrix(camera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         shapeRenderer.rect(0, 0, 1280, 720,
@@ -183,12 +200,20 @@ public class MenuScreen implements Screen {
         fontTitulo.draw(batch, layout, 640 - layout.width / 2f, 640);
 
         fontSubtitulo.setColor(Color.LIGHT_GRAY);
-        layout.setText(fontSubtitulo, "Sobreviva na Lua. Repare a base. Enfrente Marte.");
+        layout.setText(fontSubtitulo, "Sobreviva na Lua. Repare a base. Enfrente Marte e Tita.");
         fontSubtitulo.draw(batch, layout, 640 - layout.width / 2f, 575);
 
         batch.end();
 
         stage.act(delta);
+
+        // Se algum botao mandou trocar de tela agora, para por aqui:
+        // batch/stage ja vao ser descartados, nao da pra desenhar com eles.
+        if (saindo) {
+            dispose();
+            return;
+        }
+
         stage.draw();
     }
 
@@ -204,6 +229,17 @@ public class MenuScreen implements Screen {
 
     @Override
     public void dispose() {
+        // CORRIGIDO: o Stage do menu continuava como InputProcessor global mesmo
+        // depois de trocar de tela. Como ele nunca era desconectado, os cliques
+        // do jogador continuavam sendo testados contra os botoes antigos do menu
+        // (que ficam sempre na mesma posicao na tela). Se o clique caisse em cima
+        // da area de "CONTINUAR" (o que acontece com frequencia, ja que o
+        // personagem fica sempre perto do centro da tela por causa da camera),
+        // o jogo recarregava o save e reiniciava a fase do zero sem motivo aparente.
+        if (Gdx.input.getInputProcessor() == stage) {
+            Gdx.input.setInputProcessor(null);
+        }
+
         batch.dispose();
         shapeRenderer.dispose();
         fontTitulo.dispose();

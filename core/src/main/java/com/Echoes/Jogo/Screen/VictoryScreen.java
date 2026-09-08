@@ -29,6 +29,10 @@ public class VictoryScreen implements Screen {
 
     @Override
     public void show() {
+        // Garante que nenhum Stage de outra tela (ex: menu) continue interceptando
+        // cliques aqui — era isso que causava a fase reiniciar sozinha ao clicar.
+        Gdx.input.setInputProcessor(null);
+
         camera = new OrthographicCamera();
         viewport = new FitViewport(1280, 720, camera);
         camera.position.set(640, 360, 0);
