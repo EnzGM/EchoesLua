@@ -1,6 +1,7 @@
 package com.Echoes.Jogo.Screen;
 
 import com.Echoes.Jogo.Entities.Base;
+import com.Echoes.Jogo.Entities.BossLua;
 import com.Echoes.Jogo.Entities.Inimigo;
 import com.Echoes.Jogo.Entities.Item;
 import com.Echoes.Jogo.Entities.ItemType;
@@ -14,6 +15,7 @@ import com.Echoes.Jogo.Managers.ParticleManager;
 import com.Echoes.Jogo.Managers.SaveManager;
 import com.Echoes.Jogo.Ui.DialogueSystem;
 import com.Echoes.Jogo.Ui.Hud;
+import com.Echoes.Jogo.Ui.InventoryUI;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
@@ -41,6 +43,7 @@ public class LunarScreen implements Screen {
     private final Main game;
     private final PlayerStatus status;
     private MissionState missao;
+    private InventoryUI inventoryUI;
 
     private OrthographicCamera camera;
     private OrthographicCamera hudCamera;
@@ -75,6 +78,11 @@ public class LunarScreen implements Screen {
     private List<Projectile> projeteisInimigos; // exigido pela assinatura de Inimigo.update
     private List<Projectile> projeteisPlayer;   // tiros do jogador (só funciona com a arma craftada)
 
+    // ITEM 15: Boss da Lua — só existe depois que MissionState.luaMissoesOk(status) vira true.
+    // Guardamos a referência separada (além de estar dentro de "inimigos") só pra
+    // conseguirmos identificar a morte DELE especificamente e desenhar a barra de vida.
+    private BossLua bossLua;
+
     // Portal para Marte
     private Portal portalMarte;
     private boolean portalAberto = false;
@@ -98,6 +106,8 @@ public class LunarScreen implements Screen {
         // Garante que nenhum Stage de outra tela (ex: menu) continue interceptando
         // cliques aqui — era isso que causava a fase reiniciar sozinha ao clicar.
         Gdx.input.setInputProcessor(null);
+
+        inventoryUI = new InventoryUI();
 
         camera = new OrthographicCamera();
         viewport = new FitViewport(1280, 720, camera);
@@ -148,6 +158,10 @@ public class LunarScreen implements Screen {
         projeteisInimigos = new ArrayList<>();
         projeteisPlayer = new ArrayList<>();
 
+        // ITEM 15: o boss ainda não existe ao entrar na fase — só spawna quando
+        // as missões da Lua forem concluídas (ver checkBossLua()).
+        bossLua = null;
+
         portalMarte = new Portal(WORLD_WIDTH / 2f - 45, WORLD_HEIGHT - 200, 90, 90);
         portalMarte.ativo = false;
 
@@ -165,12 +179,14 @@ public class LunarScreen implements Screen {
 
     @Override
     public void render(float delta) {
+        inventoryUI.update();
         if (dialogueSystem.ativo) {
             dialogueSystem.update();
         } else {
             handleInput(delta);
             checkColetaItens();
             checkReparos();
+            checkBossLua();
             updateInimigos(delta);
             updateProjeteisPlayer(delta);
             checkColisaoInimigos(delta);
@@ -211,6 +227,10 @@ public class LunarScreen implements Screen {
         if (dialogueSystem.ativo) {
             dialogueSystem.render(shapeRenderer, batch, font, 1280, 720);
         }
+        // hud.render(...)
+// dialogueSystem.render(...)
+
+        inventoryUI.render(shapeRenderer, batch, font, hudCamera, status); // ou de onde vem o seu PlayerStatus
     }
 
     private void handleInput(float delta) {
@@ -296,6 +316,19 @@ public class LunarScreen implements Screen {
         if (player.overlaps(comunicacao) && !status.comunicacaoReparada && status.colPecaAntena) status.comunicacaoReparada = true;
     }
 
+    /**
+     * ITEM 15: spawna o Boss da Lua assim que MissionState.luaMissoesOk(status)
+     * vira true. Só roda uma vez (bossLua fica != null depois do primeiro spawn).
+     */
+    private void checkBossLua() {
+        if (bossLua == null && MissionState.luaMissoesOk(status)) {
+            float bx = portalMarte.bounds.x - 10f;
+            float by = portalMarte.bounds.y - 260f;
+            bossLua = new BossLua(bx, by);
+            inimigos.add(bossLua);
+        }
+    }
+
     private void updateInimigos(float delta) {
         for (Inimigo ini : inimigos) {
             ini.update(delta, player, projeteisInimigos);
@@ -318,7 +351,13 @@ public class LunarScreen implements Screen {
                     p.ativo = false;
                     ini.tomarDano(50);
                     particleManager.spawnColeta(ini.bounds.x, ini.bounds.y);
-                    if (!ini.ativo) inimigos.remove(j);
+                    if (!ini.ativo) {
+                        inimigos.remove(j);
+                        // ITEM 15: se quem morreu foi o Boss da Lua, entrega a chave.
+                        if (ini == bossLua) {
+                            onBossLuaDerrotado();
+                        }
+                    }
                     projeteisPlayer.remove(i);
                     break;
                 }
@@ -326,11 +365,20 @@ public class LunarScreen implements Screen {
         }
     }
 
+    /** ITEM 15: recompensa por derrotar o Boss da Lua. */
+    private void onBossLuaDerrotado() {
+        status.inventario.add("CHAVE_LUA");
+        particleManager.spawnColeta(
+            bossLua.bounds.x + bossLua.bounds.width / 2f,
+            bossLua.bounds.y + bossLua.bounds.height / 2f
+        );
+    }
+
     /** Dano por contato dos inimigos perseguidores. */
     private void checkColisaoInimigos(float delta) {
         for (Inimigo ini : inimigos) {
             if (ini.ativo && player.overlaps(ini.bounds)) {
-                status.hp -= 15f * delta;
+                status.hp -= ini.danoContato * delta;
                 if (status.hp <= 0) {
                     status.hp = 0;
                     status.missaoFalhou = true;
@@ -355,7 +403,11 @@ public class LunarScreen implements Screen {
     }
 
     private void atualizarTextoMissao() {
-        if (portalAberto) {
+        if (bossLua != null && bossLua.ativo) {
+            textoMissao = "GUARDIAO DA CRATERA desperta! Derrote-o para conseguir a chave!";
+        } else if (status.inventario.tem("CHAVE_LUA")) {
+            textoMissao = "Leve a chave ao portal de Marte!";
+        } else if (portalAberto) {
             textoMissao = "Sistemas online e arma pronta! Entre no portal para Marte!";
         } else if (status.armaCraftada) {
             textoMissao = "Arma pronta! Termine de reparar as estacoes restantes.";
@@ -402,10 +454,20 @@ public class LunarScreen implements Screen {
             shapeRenderer.rect(item.bounds.x, item.bounds.y, item.bounds.width, item.bounds.height);
         }
 
-        // Inimigos
+        // Inimigos (o BossLua também é desenhado aqui, pois está dentro de "inimigos")
         for (Inimigo ini : inimigos) {
             shapeRenderer.setColor(ini.getCor());
             shapeRenderer.rect(ini.bounds.x, ini.bounds.y, ini.bounds.width, ini.bounds.height);
+        }
+
+        // ITEM 15: barra de vida do Boss da Lua, enquanto ele estiver ativo
+        if (bossLua != null && bossLua.ativo) {
+            float barraLargura = bossLua.bounds.width;
+            shapeRenderer.setColor(Color.RED);
+            shapeRenderer.rect(bossLua.bounds.x, bossLua.bounds.y + bossLua.bounds.height + 12, barraLargura, 10);
+            shapeRenderer.setColor(Color.GREEN);
+            shapeRenderer.rect(bossLua.bounds.x, bossLua.bounds.y + bossLua.bounds.height + 12,
+                barraLargura * (bossLua.hp / BossLua.HP_INICIAL), 10);
         }
 
         // Tiros do jogador
@@ -445,10 +507,17 @@ public class LunarScreen implements Screen {
             font.draw(batch, item.type.name(), item.bounds.x - 10, item.bounds.y - 8);
         }
 
-        if (portalAberto) {
-            font.setColor(Color.ORANGE);
-            font.draw(batch, "PORTAL MARTE", portalMarte.bounds.x - 10, portalMarte.bounds.y - 15);
+        // ITEM 15: nome do boss acima dele, enquanto ativo
+        if (bossLua != null && bossLua.ativo) {
+            font.setColor(bossLua.getCor());
+            font.draw(batch, "GUARDIAO DA CRATERA", bossLua.bounds.x - 20, bossLua.bounds.y + bossLua.bounds.height + 45);
         }
+
+        // ITEM 15: a cratera (portal de Marte) mostra BLOQUEADO enquanto não estiver aberta
+        font.setColor(portalAberto ? Color.ORANGE : Color.GRAY);
+        String txtPortal = portalAberto ? "PORTAL MARTE" : "CRATERA BLOQUEADA";
+        font.draw(batch, txtPortal, portalMarte.bounds.x - 20, portalMarte.bounds.y - 15);
+
         batch.end();
     }
 

@@ -1,7 +1,6 @@
 package com.Echoes.Jogo.Screen;
 
-import com.Echoes.Jogo.Entities.BossTita;
-import com.Echoes.Jogo.Entities.Inimigo;
+import com.Echoes.Jogo.Entities.BossCalisto;
 import com.Echoes.Jogo.Entities.PlayerStatus;
 import com.Echoes.Jogo.Entities.Portal;
 import com.Echoes.Jogo.Entities.Projectile;
@@ -32,12 +31,13 @@ import com.badlogic.gdx.utils.viewport.Viewport;
 import java.util.ArrayList;
 import java.util.List;
 
-public class TitanScreen implements Screen {
+/** ITEM 18/19: planeta Calisto — gelo-azul/navy, boss de 3 formas, portal dourado pra Aharin. */
+public class CallistoScreen implements Screen {
 
     public static final float WORLD_WIDTH = 1920f;
     public static final float WORLD_HEIGHT = 1080f;
 
-    private static final Color COR_PLAYER_TITA = Color.ORANGE;
+    private static final Color COR_PLAYER_CALISTO = new Color(0.80f, 0.93f, 1f, 1f);
 
     private final Main game;
     private final PlayerStatus status;
@@ -57,10 +57,11 @@ public class TitanScreen implements Screen {
     private Rectangle player;
     private float playerSpeed = 320f;
 
-    private List<Inimigo> guardioes;
-    private BossTita bossTita;
+    private BossCalisto bossCalisto;
+    private int formaAnterior = 1;
 
-    private Portal portalCalisto;
+    // ITEM 19: portal dourado pra Aharin. So consulta inventario.tem("CHAVE_LUZ").
+    private Portal portalAharin;
     private boolean portalAberto = false;
 
     private DialogueSystem dialogueSystem;
@@ -70,7 +71,7 @@ public class TitanScreen implements Screen {
 
     private Hud hud;
     private MissionState missao;
-    private String textoMissao = "Atencao: Sinal desconhecido detectado em Tita!";
+    private String textoMissao = "Calisto: o gelo aqui esconde algo que muda de forma.";
 
     private float regenMunicaoTimer = 0f;
     private static final float REGEN_MUNICAO_INTERVALO = 4f;
@@ -79,16 +80,16 @@ public class TitanScreen implements Screen {
     private boolean pausado = false;
     private boolean trocandoTela = false;
 
-    public TitanScreen(Main game) {
+    public CallistoScreen(Main game) {
         this.game = game;
         this.status = new PlayerStatus();
-        this.status.faseAtual = "TITA";
+        this.status.faseAtual = "CALISTO";
     }
 
-    public TitanScreen(Main game, PlayerStatus status) {
+    public CallistoScreen(Main game, PlayerStatus status) {
         this.game = game;
         this.status = (status != null) ? status : new PlayerStatus();
-        this.status.faseAtual = "TITA";
+        this.status.faseAtual = "CALISTO";
     }
 
     @Override
@@ -120,39 +121,28 @@ public class TitanScreen implements Screen {
         hud = new Hud();
         missao = new MissionState();
 
-        guardioes = new ArrayList<>();
-        if (!status.titaGuardioesDerrotados) {
-            spawnGuardioes();
+        if (!status.inventario.tem("CHAVE_LUZ")) {
+            float bx = WORLD_WIDTH - 340f;
+            float by = WORLD_HEIGHT / 2f - 75f;
+            bossCalisto = new BossCalisto(bx, by);
+            formaAnterior = bossCalisto.forma;
+        } else {
+            bossCalisto = null;
         }
-        bossTita = null;
 
-        portalCalisto = new Portal(WORLD_WIDTH - 220f, WORLD_HEIGHT / 2f - 45f, 90, 90);
-        portalAberto = status.inventario.tem("CHAVE_TITA");
-        portalCalisto.ativo = portalAberto;
+        portalAharin = new Portal(WORLD_WIDTH - 220f, WORLD_HEIGHT / 2f - 45f, 90, 90);
+        portalAberto = status.inventario.tem("CHAVE_LUZ");
+        portalAharin.ativo = portalAberto;
 
-        String[] falasTita = new String[]{
-            "SISTEMA: Voce pousou na superficie gelada de Tita.",
-            "ALERTA: Guardioes do Nucleo detectaram sua presenca!",
-            "OBJETIVO: Elimine os guardioes para atrair o Guardiao Maior."
+        String[] falasCalisto = new String[]{
+            "SISTEMA: Voce chegou a Calisto. O ar aqui e denso e silencioso.",
+            "ALERTA: Algo sob o gelo esta se movendo... e nao parece morrer facil.",
+            "OBJETIVO: Derrote a entidade em todas as suas formas."
         };
-        dialogueSystem = new DialogueSystem(falasTita);
+        dialogueSystem = new DialogueSystem(falasCalisto);
 
         atualizarTextoMissao();
         SaveManager.salvarJogo(status, missao);
-    }
-
-    private void spawnGuardioes() {
-        Inimigo.TipoInimigo[] tipos = {
-            Inimigo.TipoInimigo.NORMAL,
-            Inimigo.TipoInimigo.RAPIDO,
-            Inimigo.TipoInimigo.NORMAL
-        };
-
-        for (Inimigo.TipoInimigo tipo : tipos) {
-            float gx = MathUtils.random(600f, WORLD_WIDTH - 200f);
-            float gy = MathUtils.random(150f, WORLD_HEIGHT - 150f);
-            guardioes.add(new Inimigo(gx, gy, tipo));
-        }
     }
 
     @Override
@@ -173,11 +163,10 @@ public class TitanScreen implements Screen {
                 dialogueSystem.update();
             } else {
                 handleInput(delta);
-                updateGuardioes(delta);
+                updateBoss(delta);
                 updateProjeteis(delta);
-                checkBossTita();
                 checkColisoes(delta);
-                checkPortalCalisto();
+                checkPortalAharin();
                 atualizarTextoMissao();
                 updateCamera();
                 particleManager.update(delta);
@@ -197,20 +186,19 @@ public class TitanScreen implements Screen {
             return;
         }
 
-        Gdx.gl.glClearColor(0.05f, 0.12f, 0.20f, 1f);
+        Gdx.gl.glClearColor(0.03f, 0.07f, 0.16f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
         desenharMundo();
 
         String extraHud;
-        if (bossTita != null && bossTita.ativo) {
-            extraHud = "BOSS TITA: " + (int) bossTita.hp + "/" + (int) BossTita.HP_INICIAL;
-        } else if (!status.titaGuardioesDerrotados) {
-            int restantes = 0;
-            for (Inimigo g : guardioes) if (g.ativo) restantes++;
-            extraHud = "GUARDIOES: " + restantes + " restantes";
+        if (bossCalisto != null && bossCalisto.ativo) {
+            extraHud = "BOSS CALISTO FORMA " + bossCalisto.forma + "/3 HP "
+                + (int) bossCalisto.hp + "/" + (int) bossCalisto.hpMax;
+        } else if (status.inventario.tem("CHAVE_LUZ")) {
+            extraHud = portalAberto ? "PORTAL AHARIN: ONLINE" : "Chave de Luz conquistada!";
         } else {
-            extraHud = portalAberto ? "PORTAL CALISTO: ONLINE" : "Area segura";
+            extraHud = "Area segura";
         }
         hud.render(shapeRenderer, batch, font, hudCamera, status, textoMissao, extraHud, 720);
 
@@ -247,11 +235,9 @@ public class TitanScreen implements Screen {
         }
     }
 
-    private void updateGuardioes(float delta) {
-        for (Inimigo g : guardioes) {
-            if (!g.ativo) continue;
-            g.update(delta, player, new ArrayList<Projectile>());
-        }
+    private void updateBoss(float delta) {
+        if (bossCalisto == null || !bossCalisto.ativo) return;
+        bossCalisto.update(delta, player, new ArrayList<Projectile>());
     }
 
     private void updateProjeteis(float delta) {
@@ -264,94 +250,76 @@ public class TitanScreen implements Screen {
                 continue;
             }
 
-            for (Inimigo g : guardioes) {
-                if (g.ativo && g.bounds.contains(p.x, p.y)) {
-                    p.ativo = false;
-                    g.tomarDano(50f);
-                    particleManager.spawnColeta(p.x, p.y);
+            if (bossCalisto != null && bossCalisto.ativo && bossCalisto.bounds.contains(p.x, p.y)) {
+                p.ativo = false;
+                bossCalisto.tomarDano(50f);
+                particleManager.spawnColeta(p.x, p.y);
 
-                    if (!g.ativo) {
-                        if (g == bossTita) {
-                            onBossTitaDerrotado();
-                        } else {
-                            status.municao += 3;
-                            checkGuardioesDerrotados();
-                        }
+                if (bossCalisto.forma != formaAnterior) {
+                    formaAnterior = bossCalisto.forma;
+                    for (int k = 0; k < 3; k++) {
+                        particleManager.spawnColeta(
+                            bossCalisto.bounds.x + bossCalisto.bounds.width / 2f,
+                            bossCalisto.bounds.y + bossCalisto.bounds.height / 2f
+                        );
                     }
-                    projeteis.remove(i);
-                    break;
                 }
+
+                if (bossCalisto.mortoFinal && !status.inventario.tem("CHAVE_LUZ")) {
+                    onBossCalistoDerrotado();
+                }
+
+                projeteis.remove(i);
             }
         }
     }
 
-    private void checkGuardioesDerrotados() {
-        if (status.titaGuardioesDerrotados) return;
-
-        for (Inimigo g : guardioes) {
-            if (g != bossTita && g.ativo) return;
-        }
-
-        status.titaGuardioesDerrotados = true;
-        SaveManager.salvarJogo(status, missao);
-    }
-
-    private void checkBossTita() {
-        if (bossTita == null && !status.inventario.tem("CHAVE_TITA") && MissionState.titaMissoesOk(status)) {
-            float bx = WORLD_WIDTH - 320f;
-            float by = WORLD_HEIGHT / 2f - 70f;
-            bossTita = new BossTita(bx, by);
-            guardioes.add(bossTita);
-        }
-    }
-
-    private void onBossTitaDerrotado() {
-        status.inventario.add("CHAVE_TITA");
+    private void onBossCalistoDerrotado() {
+        status.inventario.add("CHAVE_LUZ");
         portalAberto = true;
-        portalCalisto.ativo = true;
+        portalAharin.ativo = true;
         particleManager.spawnColeta(
-            bossTita.bounds.x + bossTita.bounds.width / 2f,
-            bossTita.bounds.y + bossTita.bounds.height / 2f
+            bossCalisto.bounds.x + bossCalisto.bounds.width / 2f,
+            bossCalisto.bounds.y + bossCalisto.bounds.height / 2f
         );
         SaveManager.salvarJogo(status, missao);
     }
 
     private void checkColisoes(float delta) {
-        for (Inimigo g : guardioes) {
-            if (g.ativo && player.overlaps(g.bounds)) {
-                status.hp -= g.danoContato * delta;
-                if (status.hp <= 0) {
-                    status.hp = 0;
-                    status.missaoFalhou = true;
-                }
+        if (bossCalisto == null || !bossCalisto.ativo) return;
+        if (bossCalisto.estaPiscando()) return;
+
+        if (player.overlaps(bossCalisto.bounds)) {
+            status.hp -= bossCalisto.danoContato * delta;
+            if (status.hp <= 0) {
+                status.hp = 0;
+                status.missaoFalhou = true;
             }
         }
     }
 
     /**
-     * ITEM 18: agora que a CallistoScreen existe, a transição pra lá foi
-     * destravada — antes disso ficava comentada (item 17 só cuidava do estado
-     * visual do portal).
+     * ITEM 19: o portal dourado so consulta inventario.tem("CHAVE_LUZ").
+     * Sem a chave o jogador simplesmente esbarra nele (nada acontece, o texto
+     * BLOQUEADO ja avisa). Com a chave, entra em AharinScreen.
      */
-    private void checkPortalCalisto() {
-        if (portalAberto && !trocandoTela && player.overlaps(portalCalisto.bounds)) {
+    private void checkPortalAharin() {
+        if (portalAberto && !trocandoTela && player.overlaps(portalAharin.bounds)) {
             status.curarAoTrocarFase();
-            status.faseAtual = "CALISTO";
+            status.faseAtual = "AHARIN";
             SaveManager.salvarJogo(status, missao);
-            game.setScreen(new CallistoScreen(game, status));
+            game.setScreen(new AharinScreen(game, status));
             trocandoTela = true;
         }
     }
 
     private void atualizarTextoMissao() {
-        if (bossTita != null && bossTita.ativo) {
-            textoMissao = "GUARDIAO DO NUCLEO desperta! Derrote-o para conseguir a chave!";
-        } else if (status.inventario.tem("CHAVE_TITA")) {
-            textoMissao = "Chave conquistada! O portal de Calisto esta ONLINE.";
-        } else if (status.titaGuardioesDerrotados) {
-            textoMissao = "Guardioes eliminados! Algo maior desperta em Tita...";
+        if (bossCalisto != null && bossCalisto.ativo) {
+            textoMissao = "ENTIDADE DE CALISTO desperta! Forma " + bossCalisto.forma + " de 3.";
+        } else if (status.inventario.tem("CHAVE_LUZ")) {
+            textoMissao = "Chave de Luz conquistada! O portal para Aharin esta ONLINE.";
         } else {
-            textoMissao = "Elimine os guardioes que protegem Tita!";
+            textoMissao = "Encontre e derrote a entidade escondida no gelo.";
         }
     }
 
@@ -374,30 +342,33 @@ public class TitanScreen implements Screen {
         shapeRenderer.setProjectionMatrix(camera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
 
-        for (Inimigo g : guardioes) {
-            if (!g.ativo) continue;
-            shapeRenderer.setColor(g.getCor());
-            shapeRenderer.rect(g.bounds.x, g.bounds.y, g.bounds.width, g.bounds.height);
-        }
+        if (bossCalisto != null && bossCalisto.ativo) {
+            boolean piscando = bossCalisto.estaPiscando();
+            float alpha = 1f;
+            if (piscando) {
+                alpha = ((int) (bossCalisto.transicaoTimer * 10) % 2 == 0) ? 1f : 0.35f;
+            }
+            Color cor = bossCalisto.getCor();
+            shapeRenderer.setColor(cor.r, cor.g, cor.b, alpha);
+            shapeRenderer.rect(bossCalisto.bounds.x, bossCalisto.bounds.y, bossCalisto.bounds.width, bossCalisto.bounds.height);
 
-        if (bossTita != null && bossTita.ativo) {
-            float barraLargura = bossTita.bounds.width;
+            float barraLargura = bossCalisto.bounds.width;
             shapeRenderer.setColor(Color.RED);
-            shapeRenderer.rect(bossTita.bounds.x, bossTita.bounds.y + bossTita.bounds.height + 12, barraLargura, 10);
+            shapeRenderer.rect(bossCalisto.bounds.x, bossCalisto.bounds.y + bossCalisto.bounds.height + 12, barraLargura, 10);
             shapeRenderer.setColor(Color.GREEN);
-            shapeRenderer.rect(bossTita.bounds.x, bossTita.bounds.y + bossTita.bounds.height + 12,
-                barraLargura * (bossTita.hp / BossTita.HP_INICIAL), 10);
+            shapeRenderer.rect(bossCalisto.bounds.x, bossCalisto.bounds.y + bossCalisto.bounds.height + 12,
+                barraLargura * (bossCalisto.hp / bossCalisto.hpMax), 10);
         }
 
         for (Projectile p : projeteis) {
             p.render(shapeRenderer);
         }
 
-        shapeRenderer.setColor(portalAberto ? Color.MAGENTA : Color.DARK_GRAY);
-        shapeRenderer.rect(portalCalisto.bounds.x, portalCalisto.bounds.y, portalCalisto.bounds.width, portalCalisto.bounds.height);
+        shapeRenderer.setColor(portalAberto ? new Color(1f, 0.85f, 0.15f, 1f) : Color.DARK_GRAY);
+        shapeRenderer.rect(portalAharin.bounds.x, portalAharin.bounds.y, portalAharin.bounds.width, portalAharin.bounds.height);
 
         if (regPlayer == null) {
-            shapeRenderer.setColor(COR_PLAYER_TITA);
+            shapeRenderer.setColor(COR_PLAYER_CALISTO);
             shapeRenderer.rect(player.x, player.y, player.width, player.height);
         }
 
@@ -409,19 +380,23 @@ public class TitanScreen implements Screen {
         batch.begin();
 
         if (regPlayer != null) {
-            batch.setColor(COR_PLAYER_TITA);
+            batch.setColor(COR_PLAYER_CALISTO);
             batch.draw(regPlayer, player.x, player.y, player.width, player.height);
             batch.setColor(Color.WHITE);
         }
 
-        if (bossTita != null && bossTita.ativo) {
-            font.setColor(bossTita.getCor());
-            font.draw(batch, "GUARDIAO DO NUCLEO", bossTita.bounds.x - 10, bossTita.bounds.y + bossTita.bounds.height + 45);
+        if (bossCalisto != null && bossCalisto.ativo) {
+            font.setColor(bossCalisto.getCor());
+            font.draw(batch, "ENTIDADE DE CALISTO - FORMA " + bossCalisto.forma,
+                bossCalisto.bounds.x - 20, bossCalisto.bounds.y + bossCalisto.bounds.height + 45);
         }
 
-        font.setColor(portalAberto ? Color.MAGENTA : Color.GRAY);
-        String txtPortal = portalAberto ? "PORTAL CALISTO [ONLINE]" : "PORTAL CALISTO [BLOQUEADO]";
-        font.draw(batch, txtPortal, portalCalisto.bounds.x - 30, portalCalisto.bounds.y - 20);
+        // ITEM 19: texto exato do checklist pro estado do portal.
+        font.setColor(portalAberto ? new Color(1f, 0.85f, 0.15f, 1f) : Color.GRAY);
+        String txtPortal = portalAberto
+            ? "ONLINE - Portal para Aharin"
+            : "BLOQUEADO - A chave de Luz ainda nao existe.";
+        font.draw(batch, txtPortal, portalAharin.bounds.x - 70, portalAharin.bounds.y - 20);
 
         batch.end();
     }

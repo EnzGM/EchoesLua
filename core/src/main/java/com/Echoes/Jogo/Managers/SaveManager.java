@@ -8,13 +8,13 @@ public class SaveManager {
 
     private static final String PREF_NAME = "EchoesSaveData";
 
-    // Sempre que o FORMATO do save mudar (novos campos, etc.), incremente este numero.
-    // Isso invalida automaticamente qualquer save antigo/incompleto que tenha sobrado
-    // no disco de testes anteriores, sem precisar apagar nada manualmente.
-    private static final int SAVE_VERSION = 2;
+    // v3 (ITEM 15): adicionado o campo "inventario" (chaves dos bosses: CHAVE_LUA, etc).
+    // v4 (ITEM 16): adicionado o campo "marteWavesConcluidas" (Boss de Marte).
+    // v5 (ITEM 17): adicionado o campo "titaGuardioesDerrotados" (Boss de Tita).
+    private static final int SAVE_VERSION = 5;
 
     // Ordem de progresso das fases, usada só pra saber qual é "mais avançada".
-    private static final String[] ORDEM_FASES = {"LUA", "MARTE", "TITA"};
+    private static final String[] ORDEM_FASES = {"LUA", "MARTE", "TITA", "CALISTO", "AHARIN"};
 
     public static boolean hasSave() {
         Preferences prefs = Gdx.app.getPreferences(PREF_NAME);
@@ -82,7 +82,19 @@ public class SaveManager {
         prefs.putFloat("lastMarteY", status.lastMarteY);
         prefs.putInteger("marteWaveAtual", status.marteWaveAtual);
 
+        // ITEM 16: persiste se as waves de Marte ja foram vencidas (condicao
+        // do Boss de Marte), pra sobreviver a um save/load no meio da fase.
+        prefs.putBoolean("marteWavesConcluidas", status.marteWavesConcluidas);
+
+        // ITEM 17: persiste se os guardioes de Tita ja foram derrotados
+        // (condicao do Boss de Tita).
+        prefs.putBoolean("titaGuardioesDerrotados", status.titaGuardioesDerrotados);
+
         prefs.putString("faseAtual", status.faseAtual != null ? status.faseAtual : "LUA");
+
+        // ITEM 15: persiste as chaves/itens de posse (ex.: CHAVE_LUA) como uma
+        // string separada por vírgula, pra sobreviver a um save/load.
+        prefs.putString("inventario", String.join(",", status.inventario));
 
         prefs.flush();
 
@@ -121,7 +133,16 @@ public class SaveManager {
         status.lastMarteY = prefs.getFloat("lastMarteY", 100f);
         status.marteWaveAtual = prefs.getInteger("marteWaveAtual", 1);
 
+        // ITEM 16: recarrega se as waves de Marte ja foram vencidas.
+        status.marteWavesConcluidas = prefs.getBoolean("marteWavesConcluidas", false);
+
+        // ITEM 17: recarrega se os guardioes de Tita ja foram derrotados.
+        status.titaGuardioesDerrotados = prefs.getBoolean("titaGuardioesDerrotados", false);
+
         status.faseAtual = prefs.getString("faseAtual", "LUA");
+
+        // ITEM 15: recarrega as chaves/itens de posse salvos.
+        status.inventario.carregarDe(prefs.getString("inventario", ""));
 
         // CORRIGIDO: antes o MissionState passado aqui ficava sempre na etapa 0
         // (recem-criado), entao ao clicar em "CONTINUAR" o Quest Tracker voltava

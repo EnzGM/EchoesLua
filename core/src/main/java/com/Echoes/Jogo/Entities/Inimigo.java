@@ -17,6 +17,12 @@ public class Inimigo {
     public float velocidade;
     private float timerTiro = 0f;
 
+    // ITEM 15: dano por segundo causado ao jogador em colisão de contato.
+    // Fica aqui (em vez de hardcoded nas telas) pra que subclasses como o
+    // BossLua possam sobrescrever com um valor mais alto ("dano alto" do
+    // checklist) sem precisar duplicar a lógica de colisão em cada Screen.
+    public float danoContato = 15f;
+
     // Distancia a partir da qual o inimigo "acorda" e persegue o jogador de verdade.
     private static final float RAIO_PERSEGUICAO = 450f;
     private float wanderTimer = 0f;

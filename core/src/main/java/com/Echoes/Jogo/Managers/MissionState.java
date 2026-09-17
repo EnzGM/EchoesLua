@@ -65,4 +65,49 @@ public class MissionState {
         if (status.armaCraftada) concluidas++;
         return concluidas;
     }
+
+    /**
+     * ITEM 15: flag que indica se as "missões da Lua" (peças coletadas + as 4
+     * estações reparadas + arma craftada) já foram concluídas.
+     *
+     * Enquanto isso for false:
+     *  - o Boss da Lua (BossLua) não pode spawnar;
+     *  - a cratera (portal pra Marte) continua mostrando BLOQUEADO.
+     *
+     * É estático (recebe o PlayerStatus) pra poder ser chamado a qualquer
+     * momento pela tela, sem precisar guardar estado duplicado aqui.
+     */
+    public static boolean luaMissoesOk(PlayerStatus status) {
+        return status.pecasColetadas
+            && status.todosReparosConcluidos()
+            && status.armaCraftada;
+    }
+
+    /**
+     * ITEM 16: flag que indica se as "missões de Marte" já foram concluídas.
+     *
+     * Usa estufaReparada (trazido da Lua) + marteWavesConcluidas (o "combate
+     * de prova": vencer as 3 waves da MarsScreen) como exigido pelo checklist.
+     *
+     * Enquanto isso for false:
+     *  - o Boss de Marte (BossMarte) não pode spawnar;
+     *  - o portal pra Titã continua BLOQUEADO.
+     */
+    public static boolean marteMissoesOk(PlayerStatus status) {
+        return status.estufaReparada && status.marteWavesConcluidas;
+    }
+
+    /**
+     * ITEM 17: flag que indica se as "missões de Tita" já foram concluídas.
+     *
+     * Usa titaGuardioesDerrotados (derrotar os 3 guardiões comuns da
+     * TitanScreen) como o "combate de prova" exigido pelo checklist.
+     *
+     * Enquanto isso for false:
+     *  - o Boss de Tita (BossTita) não pode spawnar;
+     *  - o portal pra Calisto continua BLOQUEADO.
+     */
+    public static boolean titaMissoesOk(PlayerStatus status) {
+        return status.titaGuardioesDerrotados;
+    }
 }

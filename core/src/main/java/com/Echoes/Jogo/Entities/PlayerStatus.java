@@ -1,13 +1,18 @@
 package com.Echoes.Jogo.Entities;
 
-public class PlayerStatus {
+import java.util.ArrayList;
+import java.util.List;
 
+public class PlayerStatus {
+    // Dentro da classe PlayerStatus:
+    public List<String> inventario = new ArrayList<>();
     public float oxigenio = 100f;
     public float hp = 100f;
     public int comida = 0;
     public int inventarioGelo = 0;
     public int agua = 0;
     public int combustivel = 0;
+
 
     public int pecaAntena = 0;
     public int pecaGerador = 0;
@@ -29,6 +34,12 @@ public class PlayerStatus {
     public float cooldownTiro = 0f;
     public static final float COOLDOWN_MAX = 0.35f;
     public int inimigosDerrotados = 0;
+
+    // REGRA VISIVEL: se a municao zerar, depois de 8s sem municao o jogador
+    // recebe 10 de volta automaticamente (pra nunca ficar travado sem poder atirar).
+    private float timerMunicaoZerada = 0f;
+    public static final float REGEN_MUNICAO_ZERADA_DELAY = 8f;
+    public static final int REGEN_MUNICAO_ZERADA_QTD = 10;
 
     public String faseAtual = "LUA";
     public float lastLuaX = 1280f;
@@ -56,6 +67,23 @@ public class PlayerStatus {
     // MELHORIA 6: checkpoint da wave em Marte
     public int marteWaveAtual = 0;
 
+    // ITEM 16: true assim que as 3 waves de Marte forem vencidas (antes do Boss
+    // aparecer). Junto com estufaReparada (trazido da Lua), forma a condicao
+    // marteMissoesOk que libera o spawn do Boss de Marte.
+    public boolean marteWavesConcluidas = false;
+
+    // ITEM 17: true assim que os 3 guardioes comuns de Tita forem derrotados
+    // (o "combate de prova" que libera o Boss de Tita).
+    public boolean titaGuardioesDerrotados = false;
+
+    // ITEM 16: true assim que as 3 waves de Marte forem vencidas (antes do Boss
+    // aparecer). Junto com estufaReparada (trazido da Lua), forma a condicao
+    // marteMissoesOk que libera o spawn do Boss de Marte.
+
+    // ITEM 15+: inventário de posse (chaves dos bosses, amostras, etc).
+    // Usado pelo BossLua (CHAVE_LUA) e por todos os próximos bosses/portais
+    // especiais (Marte, Titã, Calisto, Aharin).
+
     public void update(float delta) {
         if (missaoFalhou) return;
 
@@ -78,6 +106,26 @@ public class PlayerStatus {
             cooldownTiro -= delta;
             if (cooldownTiro < 0f) cooldownTiro = 0f;
         }
+
+        atualizarRegenMunicaoZerada(delta);
+    }
+
+    /** REGRA VISIVEL: municao zerada -> 8s depois, +10 municao automaticamente. */
+    private void atualizarRegenMunicaoZerada(float delta) {
+        if (municao <= 0) {
+            timerMunicaoZerada += delta;
+            if (timerMunicaoZerada >= REGEN_MUNICAO_ZERADA_DELAY) {
+                municao += REGEN_MUNICAO_ZERADA_QTD;
+                timerMunicaoZerada = 0f;
+            }
+        } else {
+            timerMunicaoZerada = 0f;
+        }
+    }
+
+    /** 0 a 1: quanto falta pro proximo "tick" de regen de municao (util pra HUD, se quiser mostrar). */
+    public float progressoRegenMunicaoZerada() {
+        return municao > 0 ? 0f : Math.min(1f, timerMunicaoZerada / REGEN_MUNICAO_ZERADA_DELAY);
     }
 
     public boolean podeAtirar() {

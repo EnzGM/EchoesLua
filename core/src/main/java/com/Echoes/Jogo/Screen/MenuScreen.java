@@ -139,9 +139,11 @@ public class MenuScreen implements Screen {
         String fase = SaveManager.getFaseMaisLonga();
         String faseLabel;
         switch (fase) {
-            case "MARTE": faseLabel = "MARTE"; break;
-            case "TITA":  faseLabel = "TITA";  break;
-            default:      faseLabel = "LUA";   break;
+            case "AHARIN":   faseLabel = "AHARIN";   break;
+            case "CALISTO":  faseLabel = "CALISTO";  break;
+            case "MARTE":    faseLabel = "MARTE";    break;
+            case "TITA":     faseLabel = "TITA";     break;
+            default:         faseLabel = "LUA";      break;
         }
         return "CONTINUAR (" + faseLabel + ")";
     }
@@ -165,7 +167,11 @@ public class MenuScreen implements Screen {
 
         status.missaoEtapa = missao.getEtapa();
 
-        if (status.faseAtual.equals("MARTE")) {
+        if (status.faseAtual.equals("AHARIN")) {
+            game.setScreen(new AharinScreen(game, status));
+        } else if (status.faseAtual.equals("CALISTO")) {
+            game.setScreen(new CallistoScreen(game, status));
+        } else if (status.faseAtual.equals("MARTE")) {
             game.setScreen(new MarsScreen(game, status));
         } else if (status.faseAtual.equals("TITA")) {
             game.setScreen(new TitanScreen(game, status));
