@@ -1,18 +1,13 @@
 package com.Echoes.Jogo.Entities;
 
-import java.util.ArrayList;
-import java.util.List;
-
 public class PlayerStatus {
-    // Dentro da classe PlayerStatus:
-    public List<String> inventario = new ArrayList<>();
+
     public float oxigenio = 100f;
     public float hp = 100f;
     public int comida = 0;
     public int inventarioGelo = 0;
     public int agua = 0;
     public int combustivel = 0;
-
 
     public int pecaAntena = 0;
     public int pecaGerador = 0;
@@ -76,13 +71,10 @@ public class PlayerStatus {
     // (o "combate de prova" que libera o Boss de Tita).
     public boolean titaGuardioesDerrotados = false;
 
-    // ITEM 16: true assim que as 3 waves de Marte forem vencidas (antes do Boss
-    // aparecer). Junto com estufaReparada (trazido da Lua), forma a condicao
-    // marteMissoesOk que libera o spawn do Boss de Marte.
-
     // ITEM 15+: inventário de posse (chaves dos bosses, amostras, etc).
     // Usado pelo BossLua (CHAVE_LUA) e por todos os próximos bosses/portais
     // especiais (Marte, Titã, Calisto, Aharin).
+    public Inventario inventario = new Inventario();
 
     public void update(float delta) {
         if (missaoFalhou) return;

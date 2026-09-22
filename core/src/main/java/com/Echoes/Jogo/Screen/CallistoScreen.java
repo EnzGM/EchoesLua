@@ -60,6 +60,9 @@ public class CallistoScreen implements Screen {
     private BossCalisto bossCalisto;
     private int formaAnterior = 1;
 
+    // ITEM 18 (reforçado): tiros do boss, um padrão diferente por forma.
+    private List<Projectile> projeteisBoss;
+
     // ITEM 19: portal dourado pra Aharin. So consulta inventario.tem("CHAVE_LUZ").
     private Portal portalAharin;
     private boolean portalAberto = false;
@@ -117,6 +120,7 @@ public class CallistoScreen implements Screen {
         player = new Rectangle(100, WORLD_HEIGHT / 2f, 64, 64);
 
         projeteis = new ArrayList<>();
+        projeteisBoss = new ArrayList<>();
         particleManager = new ParticleManager();
         hud = new Hud();
         missao = new MissionState();
@@ -164,6 +168,7 @@ public class CallistoScreen implements Screen {
             } else {
                 handleInput(delta);
                 updateBoss(delta);
+                updateProjeteisBoss(delta);
                 updateProjeteis(delta);
                 checkColisoes(delta);
                 checkPortalAharin();
@@ -237,7 +242,30 @@ public class CallistoScreen implements Screen {
 
     private void updateBoss(float delta) {
         if (bossCalisto == null || !bossCalisto.ativo) return;
-        bossCalisto.update(delta, player, new ArrayList<Projectile>());
+        bossCalisto.update(delta, player, projeteisBoss);
+    }
+
+    /** ITEM 18 (reforçado): move/expira os tiros do boss e aplica dano no jogador. */
+    private void updateProjeteisBoss(float delta) {
+        for (int i = projeteisBoss.size() - 1; i >= 0; i--) {
+            Projectile p = projeteisBoss.get(i);
+            p.update(delta);
+
+            if (!p.ativo) {
+                projeteisBoss.remove(i);
+                continue;
+            }
+
+            if (player.contains(p.x, p.y)) {
+                p.ativo = false;
+                status.hp -= 12f;
+                if (status.hp <= 0) {
+                    status.hp = 0;
+                    status.missaoFalhou = true;
+                }
+                projeteisBoss.remove(i);
+            }
+        }
     }
 
     private void updateProjeteis(float delta) {
@@ -364,6 +392,14 @@ public class CallistoScreen implements Screen {
             p.render(shapeRenderer);
         }
 
+        // Tiros do boss - rosa-choque, pra diferenciar dos tiros amarelos do jogador
+        for (Projectile p : projeteisBoss) {
+            if (p.ativo) {
+                shapeRenderer.setColor(1f, 0.15f, 0.55f, 1f);
+                shapeRenderer.circle(p.x, p.y, 6);
+            }
+        }
+
         shapeRenderer.setColor(portalAberto ? new Color(1f, 0.85f, 0.15f, 1f) : Color.DARK_GRAY);
         shapeRenderer.rect(portalAharin.bounds.x, portalAharin.bounds.y, portalAharin.bounds.width, portalAharin.bounds.height);
 
@@ -391,7 +427,6 @@ public class CallistoScreen implements Screen {
                 bossCalisto.bounds.x - 20, bossCalisto.bounds.y + bossCalisto.bounds.height + 45);
         }
 
-        // ITEM 19: texto exato do checklist pro estado do portal.
         font.setColor(portalAberto ? new Color(1f, 0.85f, 0.15f, 1f) : Color.GRAY);
         String txtPortal = portalAberto
             ? "ONLINE - Portal para Aharin"

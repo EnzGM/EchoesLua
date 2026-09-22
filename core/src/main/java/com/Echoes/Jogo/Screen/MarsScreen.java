@@ -132,7 +132,7 @@ public class MarsScreen implements Screen {
         // Se o jogador ja tinha derrotado o boss numa sessao anterior (chave ja
         // no inventario), o portal ja comeca aberto — sem isso o checkBossMarte()
         // ressuscitaria o boss so por causa de um reload/F5.
-        portalAberto = status.inventario.contains("CHAVE_MARTE");
+        portalAberto = status.inventario.tem("CHAVE_MARTE");
         portalTita.ativo = portalAberto;
 
         particleManager = new ParticleManager();
@@ -392,7 +392,7 @@ public class MarsScreen implements Screen {
      * a chave ja tiver sido conquistada (evita ressuscitar o boss num reload).
      */
     private void checkBossMarte() {
-        if (bossMarte == null && !status.inventario.contains("CHAVE_MARTE") && MissionState.marteMissoesOk(status)) {
+        if (bossMarte == null && !status.inventario.tem("CHAVE_MARTE") && MissionState.marteMissoesOk(status)) {
             float bx = portalTita.bounds.x - 10f;
             float by = portalTita.bounds.y - 220f;
             bossMarte = new BossMarte(bx, by);
@@ -403,7 +403,7 @@ public class MarsScreen implements Screen {
     private void atualizarTextoMissao() {
         if (bossMarte != null && bossMarte.ativo) {
             textoMissaoAtual = "SENTINELA DE MARTE desperta! Derrote-a para conseguir a chave!";
-        } else if (status.inventario.contains("CHAVE_MARTE")) {
+        } else if (status.inventario.tem("CHAVE_MARTE")) {
             textoMissaoAtual = "Leve a chave ao portal de Tita!";
         } else if (portalAberto) {
             textoMissaoAtual = "Ameaca contida! Entre no Portal para Tita!";

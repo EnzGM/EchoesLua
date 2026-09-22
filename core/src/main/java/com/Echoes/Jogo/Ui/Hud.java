@@ -8,8 +8,9 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 
 /**
- * HUD fixa (não anda com a câmera do mundo) — compartilhada entre a Lua e Marte,
- * pra manter as informações do jogador sempre com a mesma cara (MELHORIA 5).
+ * HUD fixa (não anda com a câmera do mundo) — compartilhada entre a Lua, Marte,
+ * Tita e Calisto, pra manter as informações do jogador sempre com a mesma cara
+ * (MELHORIA 5).
  */
 public class Hud {
 
@@ -19,10 +20,11 @@ public class Hud {
 
         hudCamera.update();
 
-        int linhas = 6 + (extraLinha != null ? 1 : 0);
+        boolean semMunicao = status.municao <= 0;
+
+        int linhas = 6 + (extraLinha != null ? 1 : 0) + (semMunicao ? 1 : 0);
         float altura = 25f + linhas * 27f;
 
-        // Painel translúcido atrás do texto, pra ficar legível sobre qualquer fundo
         shapeRenderer.setProjectionMatrix(hudCamera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         shapeRenderer.setColor(0f, 0f, 0f, 0.45f);
@@ -45,22 +47,23 @@ public class Hud {
         font.draw(batch, "HP: " + (int) status.hp, 30, y);
         y -= 27f;
 
-        // Linha 3: Combate (Arma e Munição) — igual na Lua e em Marte
-        font.setColor(Color.WHITE);
+        // Linha 3: Combate (Arma e Munição)
+        font.setColor(semMunicao ? Color.ORANGE : Color.WHITE);
         String armaStatus = status.armaCraftada ? "SIM" : "NAO";
         font.draw(batch, "MUNICAO: " + status.municao + " | ARMA: " + armaStatus, 30, y);
         y -= 27f;
 
-        // Linha 4: Reparos (Estufa e Energia)
+        // Linha 4: Reparos (Estufa e Gerador) — nomes batendo com as pecas do chao
         String estufaStatus = status.estufaReparada ? "ON" : "OFF";
-        String energiaStatus = status.energiaReparada ? "ON" : "OFF";
-        font.draw(batch, "ESTUFA: " + estufaStatus + " | ENERGIA: " + energiaStatus, 30, y);
+        String geradorStatus = status.energiaReparada ? "ON" : "OFF";
+        font.setColor(Color.WHITE);
+        font.draw(batch, "ESTUFA: " + estufaStatus + " | GERADOR: " + geradorStatus, 30, y);
         y -= 27f;
 
-        // Linha 5: Reparos (Extração e Comunicação)
-        String extracaoStatus = status.extracaoReparada ? "ON" : "OFF";
-        String comStatus = status.comunicacaoReparada ? "ON" : "OFF";
-        font.draw(batch, "EXTRACAO: " + extracaoStatus + " | COMUNICACAO: " + comStatus, 30, y);
+        // Linha 5: Reparos (Usina e Antena) — nomes batendo com as pecas do chao
+        String usinaStatus = status.extracaoReparada ? "ON" : "OFF";
+        String antenaStatus = status.comunicacaoReparada ? "ON" : "OFF";
+        font.draw(batch, "USINA: " + usinaStatus + " | ANTENA: " + antenaStatus, 30, y);
         y -= 27f;
 
         // Linha 6: Quest Tracker (MELHORIA 1)
@@ -68,10 +71,19 @@ public class Hud {
         font.draw(batch, "MISSAO: " + missaoAtual, 30, y);
         y -= 27f;
 
-        // Linha extra opcional — Marte usa pra mostrar a wave atual
         if (extraLinha != null) {
             font.setColor(Color.ORANGE);
             font.draw(batch, extraLinha, 30, y);
+            y -= 27f;
+        }
+
+        if (semMunicao) {
+            float restante = (1f - status.progressoRegenMunicaoZerada()) * PlayerStatus.REGEN_MUNICAO_ZERADA_DELAY;
+            if (restante < 0f) restante = 0f;
+
+            boolean piscar = (System.currentTimeMillis() / 300L) % 2 == 0;
+            font.setColor(piscar ? Color.RED : Color.ORANGE);
+            font.draw(batch, String.format("SEM MUNICAO! Fabricando novas balas... %.1fs", restante), 30, y);
         }
 
         batch.end();

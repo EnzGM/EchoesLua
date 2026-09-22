@@ -70,12 +70,13 @@ public class InventoryUI {
         font.setColor(Color.WHITE);
         float itemY = y + height - 100;
 
-        // Se você usou List<String> inventario no PlayerStatus:
-        if (status.inventario == null || status.inventario.isEmpty()) {
+        // status.inventario agora e a classe Inventario (Set por baixo dos panos),
+        // entao os itens vem de getItens() em vez de iterar a propria "inventario".
+        if (status.inventario == null || status.inventario.getItens().isEmpty()) {
             font.setColor(Color.GRAY);
             font.draw(batch, "O inventario esta vazio.", x + 40, itemY);
         } else {
-            for (String item : status.inventario) {
+            for (String item : status.inventario.getItens()) {
                 font.draw(batch, "- " + item, x + 40, itemY);
                 itemY -= 35; // Espaçamento entre os itens
             }

@@ -75,7 +75,7 @@ public class LunarScreen implements Screen {
 
     // Inimigos que perseguem o jogador na Lua
     private List<Inimigo> inimigos;
-    private List<Projectile> projeteisInimigos; // exigido pela assinatura de Inimigo.update
+    private List<Projectile> projeteisInimigos; // agora processado de verdade (boss atira)
     private List<Projectile> projeteisPlayer;   // tiros do jogador (só funciona com a arma craftada)
 
     // ITEM 15: Boss da Lua — só existe depois que MissionState.luaMissoesOk(status) vira true.
@@ -188,6 +188,7 @@ public class LunarScreen implements Screen {
             checkReparos();
             checkBossLua();
             updateInimigos(delta);
+            updateProjeteisInimigos(delta);
             updateProjeteisPlayer(delta);
             checkColisaoInimigos(delta);
             checkPortal();
@@ -227,10 +228,8 @@ public class LunarScreen implements Screen {
         if (dialogueSystem.ativo) {
             dialogueSystem.render(shapeRenderer, batch, font, 1280, 720);
         }
-        // hud.render(...)
-// dialogueSystem.render(...)
 
-        inventoryUI.render(shapeRenderer, batch, font, hudCamera, status); // ou de onde vem o seu PlayerStatus
+        inventoryUI.render(shapeRenderer, batch, font, hudCamera, status);
     }
 
     private void handleInput(float delta) {
@@ -332,6 +331,29 @@ public class LunarScreen implements Screen {
     private void updateInimigos(float delta) {
         for (Inimigo ini : inimigos) {
             ini.update(delta, player, projeteisInimigos);
+        }
+    }
+
+    /** Move os tiros do(s) inimigo(s)/boss e aplica dano no jogador ao acertar. */
+    private void updateProjeteisInimigos(float delta) {
+        for (int i = projeteisInimigos.size() - 1; i >= 0; i--) {
+            Projectile p = projeteisInimigos.get(i);
+            p.update(delta);
+
+            if (!p.ativo) {
+                projeteisInimigos.remove(i);
+                continue;
+            }
+
+            if (player.contains(p.x, p.y)) {
+                p.ativo = false;
+                status.hp -= 12f;
+                if (status.hp <= 0) {
+                    status.hp = 0;
+                    status.missaoFalhou = true;
+                }
+                projeteisInimigos.remove(i);
+            }
         }
     }
 
@@ -476,6 +498,14 @@ public class LunarScreen implements Screen {
             shapeRenderer.rect(p.x - 4, p.y - 4, 8, 8);
         }
 
+        // Tiros dos inimigos/boss (magenta, pra diferenciar do tiro do jogador)
+        for (Projectile p : projeteisInimigos) {
+            if (p.ativo) {
+                shapeRenderer.setColor(Color.MAGENTA);
+                shapeRenderer.rect(p.x - 5, p.y - 5, 10, 10);
+            }
+        }
+
         shapeRenderer.setColor(portalAberto ? Color.ORANGE : Color.DARK_GRAY);
         shapeRenderer.rect(portalMarte.bounds.x, portalMarte.bounds.y, portalMarte.bounds.width, portalMarte.bounds.height);
 
@@ -498,9 +528,9 @@ public class LunarScreen implements Screen {
 
         font.setColor(Color.WHITE);
         font.draw(batch, "ESTUFA", estufa.x + 40, estufa.y - 10);
-        font.draw(batch, "ENERGIA", energia.x + 40, energia.y - 10);
-        font.draw(batch, "EXTRACAO", extracao.x + 30, extracao.y - 10);
-        font.draw(batch, "COMUNICACAO", comunicacao.x + 20, comunicacao.y - 10);
+        font.draw(batch, "GERADOR", energia.x + 30, energia.y - 10);
+        font.draw(batch, "USINA", extracao.x + 45, extracao.y - 10);
+        font.draw(batch, "ANTENA", comunicacao.x + 40, comunicacao.y - 10);
         font.draw(batch, "BASE (E)", base.bounds.x + 25, base.bounds.y - 10);
 
         for (Item item : itens) {

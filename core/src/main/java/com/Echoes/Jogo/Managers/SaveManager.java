@@ -94,7 +94,7 @@ public class SaveManager {
 
         // ITEM 15: persiste as chaves/itens de posse (ex.: CHAVE_LUA) como uma
         // string separada por vírgula, pra sobreviver a um save/load.
-        prefs.putString("inventario", String.join(",", status.inventario));
+        prefs.putString("inventario", status.inventario.serializar());
 
         prefs.flush();
 

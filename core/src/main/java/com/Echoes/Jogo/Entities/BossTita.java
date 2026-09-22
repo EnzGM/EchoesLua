@@ -1,25 +1,26 @@
 package com.Echoes.Jogo.Entities;
 
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.math.Rectangle;
+
+import java.util.List;
 
 /**
  * ITEM 17 do checklist: Boss de Tita.
  *
- * Mesma lógica do BossLua/BossMarte: só deve ser instanciado depois que
- * MissionState.titaMissoesOk(status) for true (guardiões de Tita derrotados)
- * — isso é responsabilidade da TitanScreen, não desta classe.
- *
- * hp 180 e o chase mais agressivo dos três até aqui: velocidade mais alta
- * que o BossLua (70) e o BossMarte (85), pra sentir a escalada de dificuldade
- * pedida no checklist ("chase mais agressivo"). Reaproveita toda a IA de
- * perseguição/dano de Inimigo (extends), só troca os números e a aparência.
+ * REFORÇADO (a pedido): hp bem maior e um padrão de tiro próprio — uma
+ * rajada em cruz (4 tiros simultâneos, N/S/L/O), que obriga o jogador a se
+ * mover na diagonal pra escapar. Combina com o chase mais agressivo dele.
  */
 public class BossTita extends Inimigo {
 
-    public static final float HP_INICIAL = 180f;
+    public static final float HP_INICIAL = 420f; // era 180
     private static final float VELOCIDADE = 150f;  // mais agressivo que o BossLua (70) e o BossMarte (85)
     private static final float DANO_CONTATO = 45f; // mais alto que o BossMarte (40)
     private static final float TAMANHO = 140f;      // maior que o BossMarte (130)
+
+    private static final float INTERVALO_TIRO = 2f;
+    private float tiroTimer = INTERVALO_TIRO;
 
     public BossTita(float x, float y) {
         super(x, y, TipoInimigo.NORMAL);
@@ -32,9 +33,33 @@ public class BossTita extends Inimigo {
     }
 
     @Override
+    public void update(float delta, Rectangle player, List<Projectile> projeteisInimigos) {
+        super.update(delta, player, projeteisInimigos);
+        if (!ativo) return;
+
+        tiroTimer -= delta;
+        if (tiroTimer <= 0f) {
+            tiroTimer = INTERVALO_TIRO;
+            dispararCruz(projeteisInimigos);
+        }
+    }
+
+    /** Padrão de tiro do BossTita: 4 projéteis simultâneos nas direções cardeais. */
+    private void dispararCruz(List<Projectile> lista) {
+        float sx = bounds.x + bounds.width / 2f;
+        float sy = bounds.y + bounds.height / 2f;
+        float[][] direcoes = {{1f, 0f}, {-1f, 0f}, {0f, 1f}, {0f, -1f}};
+
+        for (float[] dir : direcoes) {
+            float destX = sx + dir[0] * 500f;
+            float destY = sy + dir[1] * 500f;
+            lista.add(new Projectile(sx, sy, destX, destY, 300f, 650f));
+        }
+    }
+
+    @Override
     public Color getCor() {
-        // Azul-gelo intenso, condizente com a atmosfera fria de Tita e bem
-        // diferente do vinho do BossLua e do laranja-ferrugem do BossMarte
+        // Azul-gelo intenso, condizente com a atmosfera fria de Tita
         return new Color(0.15f, 0.55f, 0.80f, 1f);
     }
 }

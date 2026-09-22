@@ -34,8 +34,8 @@ import java.util.List;
 
 public class TitanScreen implements Screen {
 
-    public static final float WORLD_WIDTH = 1920f;
-    public static final float WORLD_HEIGHT = 1080f;
+    public static final float WORLD_WIDTH = 1400f;
+    public static final float WORLD_HEIGHT = 800f;
 
     private static final Color COR_PLAYER_TITA = Color.ORANGE;
 
@@ -57,6 +57,8 @@ public class TitanScreen implements Screen {
     private Rectangle player;
     private float playerSpeed = 320f;
 
+    private List<Rectangle> obstaculos;
+
     private List<Inimigo> guardioes;
     private BossTita bossTita;
 
@@ -65,7 +67,8 @@ public class TitanScreen implements Screen {
 
     private DialogueSystem dialogueSystem;
 
-    private List<Projectile> projeteis;
+    private List<Projectile> projeteis;           // tiros do jogador
+    private List<Projectile> projeteisInimigos;    // agora processado de verdade (boss atira)
     private ParticleManager particleManager;
 
     private Hud hud;
@@ -115,7 +118,12 @@ public class TitanScreen implements Screen {
 
         player = new Rectangle(100, WORLD_HEIGHT / 2f, 64, 64);
 
+        obstaculos = new ArrayList<>();
+        obstaculos.add(new Rectangle(500, 250, 90, 90));
+        obstaculos.add(new Rectangle(900, 480, 90, 90));
+
         projeteis = new ArrayList<>();
+        projeteisInimigos = new ArrayList<>();
         particleManager = new ParticleManager();
         hud = new Hud();
         missao = new MissionState();
@@ -149,8 +157,8 @@ public class TitanScreen implements Screen {
         };
 
         for (Inimigo.TipoInimigo tipo : tipos) {
-            float gx = MathUtils.random(600f, WORLD_WIDTH - 200f);
-            float gy = MathUtils.random(150f, WORLD_HEIGHT - 150f);
+            float gx = MathUtils.random(500f, WORLD_WIDTH - 150f);
+            float gy = MathUtils.random(120f, WORLD_HEIGHT - 120f);
             guardioes.add(new Inimigo(gx, gy, tipo));
         }
     }
@@ -174,6 +182,7 @@ public class TitanScreen implements Screen {
             } else {
                 handleInput(delta);
                 updateGuardioes(delta);
+                updateProjeteisInimigos(delta);
                 updateProjeteis(delta);
                 checkBossTita();
                 checkColisoes(delta);
@@ -212,6 +221,12 @@ public class TitanScreen implements Screen {
         } else {
             extraHud = portalAberto ? "PORTAL CALISTO: ONLINE" : "Area segura";
         }
+
+        String dica = calcularDicaDirecao();
+        if (dica != null) {
+            extraHud += " | " + dica;
+        }
+
         hud.render(shapeRenderer, batch, font, hudCamera, status, textoMissao, extraHud, 720);
 
         if (dialogueSystem.ativo) {
@@ -231,11 +246,7 @@ public class TitanScreen implements Screen {
         if (Gdx.input.isKeyPressed(Input.Keys.A) || Gdx.input.isKeyPressed(Input.Keys.LEFT)) dx -= 1;
         if (Gdx.input.isKeyPressed(Input.Keys.D) || Gdx.input.isKeyPressed(Input.Keys.RIGHT)) dx += 1;
 
-        player.x += dx * playerSpeed * delta;
-        player.y += dy * playerSpeed * delta;
-
-        player.x = MathUtils.clamp(player.x, 0, WORLD_WIDTH - player.width);
-        player.y = MathUtils.clamp(player.y, 0, WORLD_HEIGHT - player.height);
+        moverJogador(dx * playerSpeed * delta, dy * playerSpeed * delta);
 
         if (Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) {
             if (status.podeAtirar()) {
@@ -247,10 +258,50 @@ public class TitanScreen implements Screen {
         }
     }
 
+    private void moverJogador(float moveX, float moveY) {
+        float novoX = MathUtils.clamp(player.x + moveX, 0, WORLD_WIDTH - player.width);
+        Rectangle testeX = new Rectangle(novoX, player.y, player.width, player.height);
+        if (!colideComObstaculo(testeX)) player.x = novoX;
+
+        float novoY = MathUtils.clamp(player.y + moveY, 0, WORLD_HEIGHT - player.height);
+        Rectangle testeY = new Rectangle(player.x, novoY, player.width, player.height);
+        if (!colideComObstaculo(testeY)) player.y = novoY;
+    }
+
+    private boolean colideComObstaculo(Rectangle r) {
+        for (Rectangle o : obstaculos) {
+            if (r.overlaps(o)) return true;
+        }
+        return false;
+    }
+
     private void updateGuardioes(float delta) {
         for (Inimigo g : guardioes) {
             if (!g.ativo) continue;
-            g.update(delta, player, new ArrayList<Projectile>());
+            g.update(delta, player, projeteisInimigos);
+        }
+    }
+
+    /** Move os tiros dos guardiões/boss e aplica dano no jogador ao acertar. */
+    private void updateProjeteisInimigos(float delta) {
+        for (int i = projeteisInimigos.size() - 1; i >= 0; i--) {
+            Projectile p = projeteisInimigos.get(i);
+            p.update(delta);
+
+            if (!p.ativo) {
+                projeteisInimigos.remove(i);
+                continue;
+            }
+
+            if (player.contains(p.x, p.y)) {
+                p.ativo = false;
+                status.hp -= 12f;
+                if (status.hp <= 0) {
+                    status.hp = 0;
+                    status.missaoFalhou = true;
+                }
+                projeteisInimigos.remove(i);
+            }
         }
     }
 
@@ -298,7 +349,7 @@ public class TitanScreen implements Screen {
 
     private void checkBossTita() {
         if (bossTita == null && !status.inventario.tem("CHAVE_TITA") && MissionState.titaMissoesOk(status)) {
-            float bx = WORLD_WIDTH - 320f;
+            float bx = WORLD_WIDTH - 280f;
             float by = WORLD_HEIGHT / 2f - 70f;
             bossTita = new BossTita(bx, by);
             guardioes.add(bossTita);
@@ -328,11 +379,6 @@ public class TitanScreen implements Screen {
         }
     }
 
-    /**
-     * ITEM 18: agora que a CallistoScreen existe, a transição pra lá foi
-     * destravada — antes disso ficava comentada (item 17 só cuidava do estado
-     * visual do portal).
-     */
     private void checkPortalCalisto() {
         if (portalAberto && !trocandoTela && player.overlaps(portalCalisto.bounds)) {
             status.curarAoTrocarFase();
@@ -355,6 +401,47 @@ public class TitanScreen implements Screen {
         }
     }
 
+    private String calcularDicaDirecao() {
+        Inimigo alvo = null;
+        float melhorDist = Float.MAX_VALUE;
+
+        for (Inimigo g : guardioes) {
+            if (!g.ativo) continue;
+            float cx = g.bounds.x + g.bounds.width / 2f;
+            float cy = g.bounds.y + g.bounds.height / 2f;
+            float dist = Vector2.dst(player.x, player.y, cx, cy);
+            if (dist < melhorDist) {
+                melhorDist = dist;
+                alvo = g;
+            }
+        }
+
+        if (alvo != null) {
+            float cx = alvo.bounds.x + alvo.bounds.width / 2f;
+            float cy = alvo.bounds.y + alvo.bounds.height / 2f;
+            return "Inimigo mais proximo: " + direcaoParaAlvo(cx, cy);
+        }
+
+        if (portalAberto) {
+            float cx = portalCalisto.bounds.x + portalCalisto.bounds.width / 2f;
+            float cy = portalCalisto.bounds.y + portalCalisto.bounds.height / 2f;
+            return "Portal Calisto: " + direcaoParaAlvo(cx, cy);
+        }
+
+        return null;
+    }
+
+    private String direcaoParaAlvo(float alvoX, float alvoY) {
+        float px = player.x + player.width / 2f;
+        float py = player.y + player.height / 2f;
+        float anguloGraus = (float) Math.toDegrees(Math.atan2(alvoY - py, alvoX - px));
+        if (anguloGraus < 0) anguloGraus += 360f;
+
+        String[] direcoes = {"L", "NE", "N", "NO", "O", "SO", "S", "SE"};
+        int indice = Math.round(anguloGraus / 45f) % 8;
+        return direcoes[indice];
+    }
+
     private void updateRegenMunicao(float delta) {
         regenMunicaoTimer -= delta;
         if (regenMunicaoTimer <= 0f) {
@@ -374,6 +461,11 @@ public class TitanScreen implements Screen {
         shapeRenderer.setProjectionMatrix(camera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
 
+        shapeRenderer.setColor(0.55f, 0.68f, 0.80f, 1f);
+        for (Rectangle o : obstaculos) {
+            shapeRenderer.rect(o.x, o.y, o.width, o.height);
+        }
+
         for (Inimigo g : guardioes) {
             if (!g.ativo) continue;
             shapeRenderer.setColor(g.getCor());
@@ -391,6 +483,14 @@ public class TitanScreen implements Screen {
 
         for (Projectile p : projeteis) {
             p.render(shapeRenderer);
+        }
+
+        // Tiros dos guardiões/boss (magenta, pra diferenciar do tiro do jogador)
+        for (Projectile p : projeteisInimigos) {
+            if (p.ativo) {
+                shapeRenderer.setColor(Color.MAGENTA);
+                shapeRenderer.rect(p.x - 5, p.y - 5, 10, 10);
+            }
         }
 
         shapeRenderer.setColor(portalAberto ? Color.MAGENTA : Color.DARK_GRAY);

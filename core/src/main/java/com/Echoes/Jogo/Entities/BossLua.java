@@ -1,6 +1,9 @@
 package com.Echoes.Jogo.Entities;
 
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.math.Rectangle;
+
+import java.util.List;
 
 /**
  * ITEM 15 do checklist: Boss da Lua.
@@ -8,20 +11,20 @@ import com.badlogic.gdx.graphics.Color;
  * Só deve ser instanciado depois que MissionState.luaMissoesOk(status) for
  * true (isso é responsabilidade da LunarScreen, não desta classe).
  *
- * hp 120, velocidade baixa (não foge nem é ágil) e dano de contato bem mais
- * alto que os inimigos comuns da Lua — usa o campo danoContato herdado de
- * Inimigo, então nenhuma tela precisa saber que existe uma subclasse: o
- * mesmo loop de colisão que já existia funciona sem alterações.
- *
- * Reaproveita toda a IA de perseguição/tiro/dano de Inimigo (extends), só
- * troca os números e a aparência.
+ * REFORÇADO (a pedido): hp bem maior e agora tem um padrão de tiro próprio —
+ * um único tiro mirado no jogador, de tempos em tempos, além do dano de
+ * contato já existente. É o boss mais simples dos quatro (só 1 tiro por vez),
+ * já que é a introdução do jogador aos chefes.
  */
 public class BossLua extends Inimigo {
 
-    public static final float HP_INICIAL = 120f;
+    public static final float HP_INICIAL = 220f; // era 120
     private static final float VELOCIDADE = 70f;   // baixa, comparada ao NORMAL (130) e RAPIDO (210)
     private static final float DANO_CONTATO = 35f; // alto, comparado ao padrão de 15 dos inimigos comuns
     private static final float TAMANHO = 110f;      // maior que os 48x48 padrão, pra parecer um chefe
+
+    private static final float INTERVALO_TIRO = 2.5f;
+    private float tiroTimer = INTERVALO_TIRO;
 
     public BossLua(float x, float y) {
         super(x, y, TipoInimigo.NORMAL);
@@ -31,6 +34,24 @@ public class BossLua extends Inimigo {
         this.danoContato = DANO_CONTATO;
         this.perseguicaoTotal = true; // sempre persegue direto, nunca "vagueia" feito os inimigos comuns
         this.bounds.setSize(TAMANHO, TAMANHO);
+    }
+
+    @Override
+    public void update(float delta, Rectangle player, List<Projectile> projeteisInimigos) {
+        super.update(delta, player, projeteisInimigos);
+        if (!ativo) return;
+
+        tiroTimer -= delta;
+        if (tiroTimer <= 0f) {
+            tiroTimer = INTERVALO_TIRO;
+
+            float sx = bounds.x + bounds.width / 2f;
+            float sy = bounds.y + bounds.height / 2f;
+            float tx = player.x + player.width / 2f;
+            float ty = player.y + player.height / 2f;
+
+            projeteisInimigos.add(new Projectile(sx, sy, tx, ty, 240f, 650f));
+        }
     }
 
     @Override
