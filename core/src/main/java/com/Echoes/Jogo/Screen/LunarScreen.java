@@ -13,6 +13,7 @@ import com.Echoes.Jogo.Managers.GameAssets;
 import com.Echoes.Jogo.Managers.MissionState;
 import com.Echoes.Jogo.Managers.ParticleManager;
 import com.Echoes.Jogo.Managers.SaveManager;
+import com.Echoes.Jogo.Ui.CraftingUI;
 import com.Echoes.Jogo.Ui.DialogueSystem;
 import com.Echoes.Jogo.Ui.Hud;
 import com.Echoes.Jogo.Ui.InventoryUI;
@@ -44,6 +45,7 @@ public class LunarScreen implements Screen {
     private final PlayerStatus status;
     private MissionState missao;
     private InventoryUI inventoryUI;
+    private CraftingUI craftingUI;
 
     private OrthographicCamera camera;
     private OrthographicCamera hudCamera;
@@ -53,37 +55,30 @@ public class LunarScreen implements Screen {
     private ShapeRenderer shapeRenderer;
     private BitmapFont font;
 
-    // Assets (Aula 07)
     private GameAssets assets;
     private TextureAtlas.AtlasRegion regPlayer;
     private TextureAtlas.AtlasRegion regBase;
 
     private Rectangle player;
-    private float playerSpeed = 320f; // Aumentado (era 200f)
+    private float playerSpeed = 320f;
 
-    // Estações para consertar
     private Rectangle estufa, energia, extracao, comunicacao;
 
-    // Base: onde a arma é craftada apertando E
     private Base base;
 
-    // Itens espalhados pelo mapa: 4 peças de reator + 3 peças de arma
+    // ITEM 22: bancada de crafting — separada da Base (que so crafta a arma).
+    private Rectangle bancada;
+
     private List<Item> itens;
 
-    // Obstáculos (pedras) — bloqueiam o caminho
     private List<Rectangle> obstaculos;
 
-    // Inimigos que perseguem o jogador na Lua
     private List<Inimigo> inimigos;
-    private List<Projectile> projeteisInimigos; // agora processado de verdade (boss atira)
-    private List<Projectile> projeteisPlayer;   // tiros do jogador (só funciona com a arma craftada)
+    private List<Projectile> projeteisInimigos;
+    private List<Projectile> projeteisPlayer;
 
-    // ITEM 15: Boss da Lua — só existe depois que MissionState.luaMissoesOk(status) vira true.
-    // Guardamos a referência separada (além de estar dentro de "inimigos") só pra
-    // conseguirmos identificar a morte DELE especificamente e desenhar a barra de vida.
     private BossLua bossLua;
 
-    // Portal para Marte
     private Portal portalMarte;
     private boolean portalAberto = false;
     private String textoMissao = "Colete as pecas e repare as 4 estacoes da Lua!";
@@ -92,7 +87,6 @@ public class LunarScreen implements Screen {
     private Hud hud;
     private DialogueSystem dialogueSystem;
 
-    // Trava usada pra nao desenhar com recursos ja descartados no frame da troca de tela
     private boolean trocandoTela = false;
 
     public LunarScreen(Main game, PlayerStatus status) {
@@ -103,11 +97,10 @@ public class LunarScreen implements Screen {
 
     @Override
     public void show() {
-        // Garante que nenhum Stage de outra tela (ex: menu) continue interceptando
-        // cliques aqui — era isso que causava a fase reiniciar sozinha ao clicar.
         Gdx.input.setInputProcessor(null);
 
         inventoryUI = new InventoryUI();
+        craftingUI = new CraftingUI();
 
         camera = new OrthographicCamera();
         viewport = new FitViewport(1280, 720, camera);
@@ -134,16 +127,24 @@ public class LunarScreen implements Screen {
 
         base = new Base(WORLD_WIDTH / 2f - 75, WORLD_HEIGHT / 2f - 260, 150, 150);
 
+        // ITEM 22: bancada nova, num canto livre do mapa, longe da Base de arma.
+        bancada = new Rectangle(WORLD_WIDTH / 2f - 75, WORLD_HEIGHT / 2f + 180, 150, 150);
+
         itens = new ArrayList<>();
         itens.add(new Item(700, 850, ItemType.PECA_ESTUFA));
         itens.add(new Item(1850, 850, ItemType.PECA_GERADOR));
         itens.add(new Item(700, 450, ItemType.PECA_USINA));
         itens.add(new Item(1850, 450, ItemType.PECA_ANTENA));
-        itens.add(new Item(1280, 950, ItemType.ARMA_PARTE_A)); // Corrigido: estava em (1280,1250), em cima do portal
+        itens.add(new Item(1280, 950, ItemType.ARMA_PARTE_A));
         itens.add(new Item(200, 700, ItemType.ARMA_PARTE_B));
         itens.add(new Item(2300, 700, ItemType.ARMA_PARTE_C));
 
-        // Pedras: bloqueiam a passagem, dá pra desviar (longe do ponto de spawn do jogador)
+        // ITEM 22: materiais de crafting espalhados perto da bancada
+        itens.add(new Item(1150, 1200, ItemType.GELO));
+        itens.add(new Item(1400, 1200, ItemType.PECA));
+        itens.add(new Item(1150, 1080, ItemType.METAL));
+        itens.add(new Item(1400, 1080, ItemType.CIRCUITO));
+
         obstaculos = new ArrayList<>();
         obstaculos.add(new Rectangle(750, 950, 90, 90));
         obstaculos.add(new Rectangle(1900, 950, 90, 90));
@@ -154,12 +155,10 @@ public class LunarScreen implements Screen {
         inimigos = new ArrayList<>();
         inimigos.add(new Inimigo(900, 1150, Inimigo.TipoInimigo.RAPIDO));
         inimigos.add(new Inimigo(1650, 1150, Inimigo.TipoInimigo.NORMAL));
-        inimigos.add(new Inimigo(1280, 220, Inimigo.TipoInimigo.NORMAL)); // Corrigido: estava em (1280,650), quase em cima do player
+        inimigos.add(new Inimigo(1280, 220, Inimigo.TipoInimigo.NORMAL));
         projeteisInimigos = new ArrayList<>();
         projeteisPlayer = new ArrayList<>();
 
-        // ITEM 15: o boss ainda não existe ao entrar na fase — só spawna quando
-        // as missões da Lua forem concluídas (ver checkBossLua()).
         bossLua = null;
 
         portalMarte = new Portal(WORLD_WIDTH / 2f - 45, WORLD_HEIGHT - 200, 90, 90);
@@ -174,14 +173,19 @@ public class LunarScreen implements Screen {
         };
         dialogueSystem = new DialogueSystem(falasLua);
 
-        SaveManager.salvarJogo(status, missao); // Checkpoint ao entrar na fase
+        SaveManager.salvarJogo(status, missao);
     }
 
     @Override
     public void render(float delta) {
         inventoryUI.update();
+
         if (dialogueSystem.ativo) {
             dialogueSystem.update();
+        } else if (craftingUI.isAberta()) {
+            // Enquanto o menu da bancada estiver aberto, so ele recebe input —
+            // o resto do jogo (inimigos, oxigenio) continua parado.
+            craftingUI.update(delta, status);
         } else {
             handleInput(delta);
             checkColetaItens();
@@ -195,7 +199,7 @@ public class LunarScreen implements Screen {
             atualizarTextoMissao();
             updateCamera();
             particleManager.update(delta);
-            status.atualizarCombate(delta); // essencial pra poder atirar mais de uma vez
+            status.atualizarCombate(delta);
 
             status.oxigenio -= 1.5f * delta;
             if (status.oxigenio <= 0) {
@@ -210,7 +214,6 @@ public class LunarScreen implements Screen {
             return;
         }
 
-        // A troca de tela foi agendada (portal usado) — para aqui, sem desenhar mais nada
         if (trocandoTela) {
             dispose();
             return;
@@ -230,6 +233,7 @@ public class LunarScreen implements Screen {
         }
 
         inventoryUI.render(shapeRenderer, batch, font, hudCamera, status);
+        craftingUI.render(shapeRenderer, batch, font, hudCamera, status);
     }
 
     private void handleInput(float delta) {
@@ -241,15 +245,18 @@ public class LunarScreen implements Screen {
 
         moverJogador(dx * playerSpeed * delta, dy * playerSpeed * delta);
 
-        // Craft da arma na base, apertando E
-        if (Gdx.input.isKeyJustPressed(Input.Keys.E) && player.overlaps(base.bounds)) {
-            if (!status.armaCraftada && status.colArmaParteA && status.colArmaParteB && status.colArmaParteC) {
-                status.armaCraftada = true;
-                particleManager.spawnColeta(base.bounds.x + 75, base.bounds.y + 75);
+        if (Gdx.input.isKeyJustPressed(Input.Keys.E)) {
+            if (player.overlaps(base.bounds)) {
+                if (!status.armaCraftada && status.colArmaParteA && status.colArmaParteB && status.colArmaParteC) {
+                    status.armaCraftada = true;
+                    particleManager.spawnColeta(base.bounds.x + 75, base.bounds.y + 75);
+                }
+            } else if (player.overlaps(bancada)) {
+                // ITEM 22: abre o menu da bancada de crafting
+                craftingUI.abrir();
             }
         }
 
-        // Tiro (só funciona depois da arma craftada)
         if (Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) {
             if (status.podeAtirar()) {
                 Vector2 mouseWorld = viewport.unproject(new Vector2(Gdx.input.getX(), Gdx.input.getY()));
@@ -264,7 +271,6 @@ public class LunarScreen implements Screen {
         }
     }
 
-    /** Move o jogador eixo a eixo, sem atravessar obstáculos. */
     private void moverJogador(float moveX, float moveY) {
         float novoX = MathUtils.clamp(player.x + moveX, 0, WORLD_WIDTH - player.width);
         Rectangle testeX = new Rectangle(novoX, player.y, player.width, player.height);
@@ -297,6 +303,11 @@ public class LunarScreen implements Screen {
                     case ARMA_PARTE_A: status.colArmaParteA = true;  status.armaParteA++;  break;
                     case ARMA_PARTE_B: status.colArmaParteB = true;  status.armaParteB++;  break;
                     case ARMA_PARTE_C: status.colArmaParteC = true;  status.armaParteC++;  break;
+                    // ITEM 22: materiais de crafting vao pro Inventario (com quantidade)
+                    case GELO:     status.inventario.add("GELO");     break;
+                    case PECA:     status.inventario.add("PECA");     break;
+                    case METAL:    status.inventario.add("METAL");    break;
+                    case CIRCUITO: status.inventario.add("CIRCUITO"); break;
                     default: break;
                 }
 
@@ -315,10 +326,6 @@ public class LunarScreen implements Screen {
         if (player.overlaps(comunicacao) && !status.comunicacaoReparada && status.colPecaAntena) status.comunicacaoReparada = true;
     }
 
-    /**
-     * ITEM 15: spawna o Boss da Lua assim que MissionState.luaMissoesOk(status)
-     * vira true. Só roda uma vez (bossLua fica != null depois do primeiro spawn).
-     */
     private void checkBossLua() {
         if (bossLua == null && MissionState.luaMissoesOk(status)) {
             float bx = portalMarte.bounds.x - 10f;
@@ -334,7 +341,6 @@ public class LunarScreen implements Screen {
         }
     }
 
-    /** Move os tiros do(s) inimigo(s)/boss e aplica dano no jogador ao acertar. */
     private void updateProjeteisInimigos(float delta) {
         for (int i = projeteisInimigos.size() - 1; i >= 0; i--) {
             Projectile p = projeteisInimigos.get(i);
@@ -375,7 +381,6 @@ public class LunarScreen implements Screen {
                     particleManager.spawnColeta(ini.bounds.x, ini.bounds.y);
                     if (!ini.ativo) {
                         inimigos.remove(j);
-                        // ITEM 15: se quem morreu foi o Boss da Lua, entrega a chave.
                         if (ini == bossLua) {
                             onBossLuaDerrotado();
                         }
@@ -387,7 +392,6 @@ public class LunarScreen implements Screen {
         }
     }
 
-    /** ITEM 15: recompensa por derrotar o Boss da Lua. */
     private void onBossLuaDerrotado() {
         status.inventario.add("CHAVE_LUA");
         particleManager.spawnColeta(
@@ -396,7 +400,6 @@ public class LunarScreen implements Screen {
         );
     }
 
-    /** Dano por contato dos inimigos perseguidores. */
     private void checkColisaoInimigos(float delta) {
         for (Inimigo ini : inimigos) {
             if (ini.ativo && player.overlaps(ini.bounds)) {
@@ -409,7 +412,6 @@ public class LunarScreen implements Screen {
         }
     }
 
-    /** Portal só abre quando os 4 sistemas estiverem reparados E a arma craftada. */
     private void checkPortal() {
         if (!portalAberto && status.todosReparosConcluidos() && status.armaCraftada) {
             portalAberto = true;
@@ -465,7 +467,10 @@ public class LunarScreen implements Screen {
             shapeRenderer.rect(base.bounds.x, base.bounds.y, base.bounds.width, base.bounds.height);
         }
 
-        // Obstáculos (pedras)
+        // ITEM 22: bancada de crafting (roxa, pra diferenciar da Base de arma)
+        shapeRenderer.setColor(new Color(0.55f, 0.25f, 0.75f, 1f));
+        shapeRenderer.rect(bancada.x, bancada.y, bancada.width, bancada.height);
+
         shapeRenderer.setColor(Color.DARK_GRAY);
         for (Rectangle o : obstaculos) {
             shapeRenderer.rect(o.x, o.y, o.width, o.height);
@@ -476,13 +481,11 @@ public class LunarScreen implements Screen {
             shapeRenderer.rect(item.bounds.x, item.bounds.y, item.bounds.width, item.bounds.height);
         }
 
-        // Inimigos (o BossLua também é desenhado aqui, pois está dentro de "inimigos")
         for (Inimigo ini : inimigos) {
             shapeRenderer.setColor(ini.getCor());
             shapeRenderer.rect(ini.bounds.x, ini.bounds.y, ini.bounds.width, ini.bounds.height);
         }
 
-        // ITEM 15: barra de vida do Boss da Lua, enquanto ele estiver ativo
         if (bossLua != null && bossLua.ativo) {
             float barraLargura = bossLua.bounds.width;
             shapeRenderer.setColor(Color.RED);
@@ -492,13 +495,11 @@ public class LunarScreen implements Screen {
                 barraLargura * (bossLua.hp / BossLua.HP_INICIAL), 10);
         }
 
-        // Tiros do jogador
         for (Projectile p : projeteisPlayer) {
             shapeRenderer.setColor(Color.CYAN);
             shapeRenderer.rect(p.x - 4, p.y - 4, 8, 8);
         }
 
-        // Tiros dos inimigos/boss (magenta, pra diferenciar do tiro do jogador)
         for (Projectile p : projeteisInimigos) {
             if (p.ativo) {
                 shapeRenderer.setColor(Color.MAGENTA);
@@ -532,18 +533,19 @@ public class LunarScreen implements Screen {
         font.draw(batch, "USINA", extracao.x + 45, extracao.y - 10);
         font.draw(batch, "ANTENA", comunicacao.x + 40, comunicacao.y - 10);
         font.draw(batch, "BASE (E)", base.bounds.x + 25, base.bounds.y - 10);
+        font.setColor(new Color(0.85f, 0.65f, 1f, 1f));
+        font.draw(batch, "BANCADA (E)", bancada.x + 5, bancada.y - 10);
 
         for (Item item : itens) {
+            font.setColor(Color.WHITE);
             font.draw(batch, item.type.name(), item.bounds.x - 10, item.bounds.y - 8);
         }
 
-        // ITEM 15: nome do boss acima dele, enquanto ativo
         if (bossLua != null && bossLua.ativo) {
             font.setColor(bossLua.getCor());
             font.draw(batch, "GUARDIAO DA CRATERA", bossLua.bounds.x - 20, bossLua.bounds.y + bossLua.bounds.height + 45);
         }
 
-        // ITEM 15: a cratera (portal de Marte) mostra BLOQUEADO enquanto não estiver aberta
         font.setColor(portalAberto ? Color.ORANGE : Color.GRAY);
         String txtPortal = portalAberto ? "PORTAL MARTE" : "CRATERA BLOQUEADA";
         font.draw(batch, txtPortal, portalMarte.bounds.x - 20, portalMarte.bounds.y - 15);

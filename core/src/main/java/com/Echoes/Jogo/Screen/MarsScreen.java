@@ -6,6 +6,7 @@ import com.Echoes.Jogo.Managers.GameAssets;
 import com.Echoes.Jogo.Managers.MissionState;
 import com.Echoes.Jogo.Managers.ParticleManager;
 import com.Echoes.Jogo.Managers.SaveManager;
+import com.Echoes.Jogo.Managers.Tempestade;
 import com.Echoes.Jogo.Ui.DialogueSystem;
 import com.Echoes.Jogo.Ui.Hud;
 import com.Echoes.Jogo.Ui.InventoryUI;
@@ -65,11 +66,13 @@ public class MarsScreen implements Screen {
     private final int MAX_WAVES = 3;
     private String textoMissaoAtual = "";
 
-    // ITEM 16: Boss de Marte — só existe depois que MissionState.marteMissoesOk(status)
-    // vira true (estufa reparada na Lua + as 3 waves vencidas). Guardamos a referência
-    // separada (além de estar dentro de "inimigos") pra identificar a morte DELE
-    // especificamente e desenhar a barra de vida/nome, igual o BossLua na LunarScreen.
     private BossMarte bossMarte;
+
+    // ITEM 23: tempestade ciclica + abrigo. Fora do abrigo, durante a fase
+    // TEMPESTADE, o jogador toma dano por segundo; dentro do abrigo, nada.
+    private Tempestade tempestade;
+    private Rectangle abrigo;
+    private static final float DANO_TEMPESTADE_POR_SEGUNDO = 10f;
 
     private ParticleManager particleManager;
     private Hud hud;
@@ -125,13 +128,13 @@ public class MarsScreen implements Screen {
 
         portalTita = new Portal(WORLD_WIDTH / 2f - 45, WORLD_HEIGHT - 200, 90, 90);
 
-        // ITEM 16: o boss ainda não existe ao entrar na fase — só spawna quando
-        // MissionState.marteMissoesOk(status) for true (ver checkBossMarte()).
         bossMarte = null;
 
-        // Se o jogador ja tinha derrotado o boss numa sessao anterior (chave ja
-        // no inventario), o portal ja comeca aberto — sem isso o checkBossMarte()
-        // ressuscitaria o boss so por causa de um reload/F5.
+        // ITEM 23: tempestade e abrigo — perto do ponto de spawn, pra o jogador
+        // sempre ter uma referencia proxima de onde se proteger.
+        tempestade = new Tempestade();
+        abrigo = new Rectangle(WORLD_WIDTH / 2f - 110, 90, 220, 170);
+
         portalAberto = status.inventario.tem("CHAVE_MARTE");
         portalTita.ativo = portalAberto;
 
@@ -139,18 +142,14 @@ public class MarsScreen implements Screen {
         hud = new Hud();
         missao = new MissionState();
 
-        // Retoma da wave salva em vez de sempre voltar pra wave 1
         waveAtual = Math.max(1, Math.min(status.marteWaveAtual, MAX_WAVES));
         status.marteWaveAtual = waveAtual;
 
         String[] falasMarte = new String[]{
-            "ESTACAO DE SUPORTE: Mate eles e depois vá salvar Titã!"
+            "ESTACAO DE SUPORTE: Mate eles e depois vá salvar Titã! E cuidado com as tempestades — abrigue-se quando o ceu mudar!"
         };
         dialogueSystem = new DialogueSystem(falasMarte);
 
-        // ITEM 16: se as waves ja tinham sido concluidas numa sessao anterior
-        // (jogador salvou/saiu no meio da espera do boss), nao spawna wave de
-        // novo — deixa vazio pra checkBossMarte() cuidar do resto.
         if (status.marteWavesConcluidas) {
             inimigos.clear();
         } else {
@@ -194,6 +193,7 @@ public class MarsScreen implements Screen {
                 checkColisoes(delta);
                 updateWaveManager();
                 checkBossMarte();
+                atualizarTempestade(delta);
                 atualizarTextoMissao();
                 updateCamera();
                 particleManager.update(delta);
@@ -211,7 +211,9 @@ public class MarsScreen implements Screen {
             return;
         }
 
-        Gdx.gl.glClearColor(0.25f, 0.08f, 0.05f, 1f);
+        // ITEM 23: cor do ceu muda conforme a fase da tempestade
+        Color corCeu = corDoCeu();
+        Gdx.gl.glClearColor(corCeu.r, corCeu.g, corCeu.b, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
         desenharMundo();
@@ -219,15 +221,36 @@ public class MarsScreen implements Screen {
         String extraHud = (bossMarte != null && bossMarte.ativo)
             ? "BOSS DE MARTE: " + (int) bossMarte.hp + "/" + (int) BossMarte.HP_INICIAL
             : "WAVE: " + waveAtual + "/" + MAX_WAVES;
+        extraHud += " | " + tempestade.getTextoHud();
+
         hud.render(shapeRenderer, batch, font, hudCamera, status, textoMissaoAtual, extraHud, 720);
 
         if (dialogueSystem.ativo) {
             dialogueSystem.render(shapeRenderer, batch, font, 1280, 720);
         }
-        // hud.render(...)
-// dialogueSystem.render(...)
 
-        inventoryUI.render(shapeRenderer, batch, font, hudCamera, status); // ou de onde vem o seu PlayerStatus
+        inventoryUI.render(shapeRenderer, batch, font, hudCamera, status);
+    }
+
+    /** ITEM 23: avança o ciclo da tempestade e aplica dano se o jogador estiver exposto. */
+    private void atualizarTempestade(float delta) {
+        tempestade.update(delta);
+
+        if (tempestade.estaEmTempestade() && !player.overlaps(abrigo)) {
+            status.hp -= DANO_TEMPESTADE_POR_SEGUNDO * delta;
+            if (status.hp <= 0) {
+                status.hp = 0;
+                status.missaoFalhou = true;
+            }
+        }
+    }
+
+    private Color corDoCeu() {
+        switch (tempestade.getFase()) {
+            case ALERTA: return new Color(0.35f, 0.15f, 0.05f, 1f);
+            case TEMPESTADE: return new Color(0.12f, 0.05f, 0.10f, 1f);
+            default: return new Color(0.25f, 0.08f, 0.05f, 1f);
+        }
     }
 
     private void handleInput(float delta) {
@@ -247,7 +270,6 @@ public class MarsScreen implements Screen {
                 projeteisPlayer.add(new Projectile(startX, startY, mouseWorld.x, mouseWorld.y, 600f, 500f));
             }
         }
-
     }
 
     private void moverJogador(float moveX, float moveY) {
@@ -292,8 +314,6 @@ public class MarsScreen implements Screen {
 
                     if (!ini.ativo) {
                         inimigos.remove(j);
-                        // ITEM 16: se quem morreu foi o Boss de Marte, entrega a chave
-                        // em vez do drop de item comum (oxigenio/municao).
                         if (ini == bossMarte) {
                             onBossMarteDerrotado();
                         } else {
@@ -323,7 +343,6 @@ public class MarsScreen implements Screen {
         }
     }
 
-    /** ITEM 16: recompensa por derrotar o Boss de Marte — abre o portal pra Tita. */
     private void onBossMarteDerrotado() {
         status.inventario.add("CHAVE_MARTE");
         portalAberto = true;
@@ -338,10 +357,6 @@ public class MarsScreen implements Screen {
     private void checkColisoes(float delta) {
         for (Inimigo ini : inimigos) {
             if (ini.ativo && player.overlaps(ini.bounds)) {
-                // CORRIGIDO: antes o dano de contato era um valor fixo (20f) pra
-                // qualquer inimigo, ignorando o campo danoContato — isso fazia o
-                // "dano alto" do Boss de Marte nao ter efeito nenhum. Agora usa
-                // o danoContato de cada inimigo, igual a LunarScreen ja fazia.
                 status.hp -= ini.danoContato * delta;
                 if (status.hp <= 0) {
                     status.hp = 0;
@@ -385,12 +400,6 @@ public class MarsScreen implements Screen {
         }
     }
 
-    /**
-     * ITEM 16: spawna o Boss de Marte assim que MissionState.marteMissoesOk(status)
-     * vira true (estufa reparada na Lua + as 3 waves vencidas). So roda uma vez
-     * (bossMarte fica != null depois do primeiro spawn) e nao spawna de novo se
-     * a chave ja tiver sido conquistada (evita ressuscitar o boss num reload).
-     */
     private void checkBossMarte() {
         if (bossMarte == null && !status.inventario.tem("CHAVE_MARTE") && MissionState.marteMissoesOk(status)) {
             float bx = portalTita.bounds.x - 10f;
@@ -431,12 +440,16 @@ public class MarsScreen implements Screen {
             shapeRenderer.rect(o.x, o.y, o.width, o.height);
         }
 
+        // ITEM 23: abrigo — verde-azulado quando o jogador esta dentro, cinza normalmente
+        boolean playerNoAbrigo = player.overlaps(abrigo);
+        shapeRenderer.setColor(playerNoAbrigo ? new Color(0.25f, 0.55f, 0.55f, 1f) : new Color(0.4f, 0.4f, 0.42f, 1f));
+        shapeRenderer.rect(abrigo.x, abrigo.y, abrigo.width, abrigo.height);
+
         for (Inimigo ini : inimigos) {
             shapeRenderer.setColor(ini.getCor());
             shapeRenderer.rect(ini.bounds.x, ini.bounds.y, ini.bounds.width, ini.bounds.height);
         }
 
-        // ITEM 16: barra de vida do Boss de Marte, enquanto ele estiver ativo
         if (bossMarte != null && bossMarte.ativo) {
             float barraLargura = bossMarte.bounds.width;
             shapeRenderer.setColor(Color.RED);
@@ -490,7 +503,6 @@ public class MarsScreen implements Screen {
             }
         }
 
-        // ITEM 16: nome do boss acima dele, enquanto ativo
         if (bossMarte != null && bossMarte.ativo) {
             font.setColor(bossMarte.getCor());
             font.draw(batch, "SENTINELA DE MARTE", bossMarte.bounds.x - 20, bossMarte.bounds.y + bossMarte.bounds.height + 45);
@@ -499,6 +511,11 @@ public class MarsScreen implements Screen {
         font.setColor(portalAberto ? Color.MAGENTA : Color.GRAY);
         String txt = portalAberto ? "PORTAL PARA TITA [ABERTO]" : "PORTAL BLOQUEADO";
         font.draw(batch, txt, portalTita.bounds.x - 30, portalTita.bounds.y + portalTita.bounds.height + 20);
+
+        // ITEM 23: rotulo do abrigo
+        font.setColor(playerNoAbrigo ? Color.CYAN : Color.LIGHT_GRAY);
+        font.draw(batch, "ABRIGO", abrigo.x + 75, abrigo.y - 12);
+
         batch.end();
     }
 

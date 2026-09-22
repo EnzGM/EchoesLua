@@ -13,7 +13,6 @@ public class InventoryUI {
     private boolean isOpen = false;
 
     public void update() {
-        // Alterna entre abrir e fechar o inventário ao apertar 'I'
         if (Gdx.input.isKeyJustPressed(Input.Keys.I)) {
             isOpen = !isOpen;
         }
@@ -26,63 +25,52 @@ public class InventoryUI {
     public void render(ShapeRenderer shapeRenderer, SpriteBatch batch, BitmapFont font,
                        OrthographicCamera hudCamera, PlayerStatus status) {
 
-        // Só renderiza se estiver aberto
         if (!isOpen) return;
 
         hudCamera.update();
 
-        // Configuração do tamanho da janela do inventário
         float width = 400;
         float height = 500;
 
-        // Centralizar na tela baseando-se na câmera da HUD
         float x = (hudCamera.viewportWidth - width) / 2;
         float y = (hudCamera.viewportHeight - height) / 2;
 
-        // --- DESENHAR O FUNDO DA JANELA ---
         shapeRenderer.setProjectionMatrix(hudCamera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-
-        // Fundo escuro levemente transparente
         shapeRenderer.setColor(0.1f, 0.1f, 0.1f, 0.95f);
         shapeRenderer.rect(x, y, width, height);
         shapeRenderer.end();
 
-        // Borda do menu (linha grossa)
-        Gdx.gl.glLineWidth(3); // Deixa a linha da borda um pouco mais grossa
+        Gdx.gl.glLineWidth(3);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
         shapeRenderer.setColor(Color.LIGHT_GRAY);
         shapeRenderer.rect(x, y, width, height);
         shapeRenderer.end();
-        Gdx.gl.glLineWidth(1); // Reseta a grossura da linha
+        Gdx.gl.glLineWidth(1);
 
-        // --- DESENHAR OS TEXTOS E ITENS ---
         batch.setProjectionMatrix(hudCamera.combined);
         batch.begin();
 
-        // Título
         font.getData().setScale(1.5f);
         font.setColor(Color.YELLOW);
         font.draw(batch, "--- INVENTARIO ---", x + 60, y + height - 30);
 
-        // Itens
         font.getData().setScale(1.2f);
         font.setColor(Color.WHITE);
         float itemY = y + height - 100;
 
-        // status.inventario agora e a classe Inventario (Set por baixo dos panos),
-        // entao os itens vem de getItens() em vez de iterar a propria "inventario".
         if (status.inventario == null || status.inventario.getItens().isEmpty()) {
             font.setColor(Color.GRAY);
             font.draw(batch, "O inventario esta vazio.", x + 40, itemY);
         } else {
             for (String item : status.inventario.getItens()) {
-                font.draw(batch, "- " + item, x + 40, itemY);
-                itemY -= 35; // Espaçamento entre os itens
+                int qtd = status.inventario.getQuantidade(item);
+                String linha = (qtd > 1) ? ("- " + item + " x" + qtd) : ("- " + item);
+                font.draw(batch, linha, x + 40, itemY);
+                itemY -= 35;
             }
         }
 
-        // Dica para fechar
         font.getData().setScale(1f);
         font.setColor(Color.GRAY);
         font.draw(batch, "Pressione 'I' para fechar", x + 115, y + 40);

@@ -11,5 +11,11 @@ public enum ItemType {
     ARMA_PARTE_A,
     ARMA_PARTE_B,
     ARMA_PARTE_C,
-    MUNICAO // MELHORIA 3: Adicionado para o drop dos inimigos
+    MUNICAO, // MELHORIA 3: Adicionado para o drop dos inimigos
+
+    // ITEM 22: materiais de crafting (bancada). GELO ja existia e passa a
+    // servir tambem como material de receita.
+    PECA,
+    METAL,
+    CIRCUITO
 }
