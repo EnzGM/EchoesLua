@@ -42,6 +42,7 @@ public class BossCalisto extends Inimigo {
 
     // Padrão de tiro: cada forma atira diferente.
     private float tiroTimer;
+    private float rotacaoPadrao = 0f;
 
     public BossCalisto(float x, float y) {
         super(x, y, TipoInimigo.NORMAL);
@@ -102,7 +103,7 @@ public class BossCalisto extends Inimigo {
 
         switch (forma) {
             case 1:
-                lista.add(new Projectile(sx, sy, tx, ty, 260f, 700f));
+                lista.add(Projectile.tiroEspecialInimigo(sx, sy, tx, ty, 260f, 700f));
                 break;
             case 2:
                 disparaLeque(lista, sx, sy, tx, ty, 3, 18f, 300f);
@@ -125,17 +126,27 @@ public class BossCalisto extends Inimigo {
             float ang = (inicio + i * anguloEntreTiros) * MathUtils.degreesToRadians;
             float destinoX = sx + MathUtils.cos(ang) * 400f;
             float destinoY = sy + MathUtils.sin(ang) * 400f;
-            lista.add(new Projectile(sx, sy, destinoX, destinoY, velocidade, 650f));
+            lista.add(Projectile.tiroEspecialInimigo(sx, sy, destinoX, destinoY, velocidade, 650f));
         }
     }
 
     /** Rajada radial: N tiros distribuídos igualmente em 360 graus. */
     private void disparaRadial(List<Projectile> lista, float sx, float sy, int qtd, float velocidade) {
-        for (int i = 0; i < qtd; i++) {
-            float ang = (360f / qtd) * i * MathUtils.degreesToRadians;
-            float destinoX = sx + MathUtils.cos(ang) * 400f;
-            float destinoY = sy + MathUtils.sin(ang) * 400f;
-            lista.add(new Projectile(sx, sy, destinoX, destinoY, velocidade, 650f));
+        rotacaoPadrao += 0.20f;
+        // Forma 3: dois anéis defasados. O padrão gira e cria corredores
+        // móveis, no estilo bullet-hell, em vez de uma cruz previsível.
+        for (int anel = 0; anel < 2; anel++) {
+            for (int i = 0; i < qtd; i++) {
+                float ang = rotacaoPadrao + anel * (MathUtils.PI / qtd)
+                        + (MathUtils.PI2 / qtd) * i;
+                float alcance = anel == 0 ? 760f : 900f;
+                float vel = anel == 0 ? velocidade : velocidade + 45f;
+                float destinoX = sx + MathUtils.cos(ang) * alcance;
+                float destinoY = sy + MathUtils.sin(ang) * alcance;
+                lista.add(Projectile.tiroEspecialInimigo(
+                    sx, sy, destinoX, destinoY, vel, alcance
+                ).comForca(20f + anel * 5f, anel == 0 ? 7f : 6f));
+            }
         }
     }
 

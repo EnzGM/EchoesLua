@@ -1,13 +1,45 @@
 package com.Echoes.Jogo.Entities;
 
+import com.Echoes.Jogo.Managers.Difficulty;
+import java.util.HashSet;
+import java.util.Set;
+
 public class PlayerStatus {
 
-    public float oxigenio = 100f;
+    public Difficulty dificuldade = Difficulty.NORMAL;
+    public Set<String> chefesMortos = new HashSet<>();
+
     public float hp = 100f;
     public int comida = 0;
     public int inventarioGelo = 0;
     public int agua = 0;
     public int combustivel = 0;
+
+    // ITEM 22: moeda da loja.
+    public int creditos = 0;
+
+    // Loja: upgrades permanentes de arma e drone.
+    public int nivelUpgradeArma = 0;
+    public int nivelUpgradeDrone = 0;
+
+    // ITEM 23: status especial temporario recebido por hits especiais.
+    public String efeitoTipo = "";
+    public float efeitoTimer = 0f;
+
+    // ITEM 24: checkpoint independente do sistema CONTINUAR do menu.
+    public boolean temCheckpoint = false;
+    public float checkpointX = 200f;
+    public float checkpointY = 200f;
+    public String checkpointFase = "";
+
+    // ITEM 28: recurso perdido no local da ultima morte. Uma nova morte substitui o drop antigo.
+    public Drop dropMorte = null;
+
+    // ITEM 25: carga do ataque com SPACE.
+    public float cargaAtaque = 0f;
+    private boolean spaceAnterior = false;
+    private static final float EFEITO_DURACAO = 4f;
+    private static final float VENENO_HP_POR_SEGUNDO = 6f;
 
     public int pecaAntena = 0;
     public int pecaGerador = 0;
@@ -71,28 +103,85 @@ public class PlayerStatus {
     // (o "combate de prova" que libera o Boss de Tita).
     public boolean titaGuardioesDerrotados = false;
 
+    // ITEM 22: materiais brutos coletados no mapa, usados na bancada de crafting.
+    // Contáveis (diferente das chaves em "inventario", que são só posse/ausência).
+    public int metal = 0;
+    public int circuito = 0;
+
+    // ITEM 22: itens craftados na bancada.
+    public int filtroO2 = 0;
+
     // ITEM 15+: inventário de posse (chaves dos bosses, amostras, etc).
     // Usado pelo BossLua (CHAVE_LUA) e por todos os próximos bosses/portais
     // especiais (Marte, Titã, Calisto, Aharin).
     public Inventario inventario = new Inventario();
 
+    // ITEM 24: true enquanto o drone companheiro estiver "chamado" (tecla C).
+    // Persistido no save pra ele voltar sozinho apos um checkpoint/continue,
+    // sem o jogador precisar chamar de novo.
+    public boolean droneAtivo = false;
+
     public void update(float delta) {
         if (missaoFalhou) return;
-
-        oxigenio -= 2f * delta;
-        if (oxigenio <= 0f) {
-            oxigenio = 0f;
-            missaoFalhou = true;
-        }
 
         atualizarCombate(delta);
     }
 
-    public void consumirOxigenio(float delta) {
-        update(delta);
+
+    // ITEM 24: grava a posição da estátua/painel como ponto de respawn.
+    public void salvarCheckpoint(float x, float y, String fase) {
+        checkpointX = x;
+        checkpointY = y;
+        checkpointFase = fase != null ? fase : "";
+        temCheckpoint = true;
     }
 
-    /** Só tira o cooldown da arma (sem mexer no oxigenio) — usado em telas onde o O2 não é consumido, como Marte. */
+    // ITEM 24: ao morrer, volta ao último checkpoint e não ao ponto inicial.
+    public void respawnNoCheckpoint() {
+        if (!temCheckpoint) return;
+        hp = 25f;
+        missaoFalhou = false;
+        efeitoTipo = "";
+        efeitoTimer = 0f;
+    }
+
+    // ITEM 28: ao morrer, perde uma parte dos recursos e deixa um marcador no chao.
+    public void criarDropMorte(float x, float y) {
+        int perdeuCreditos = Math.min(10, Math.max(0, creditos));
+        int perdeuMunicao = Math.min(3, Math.max(0, municao));
+        creditos -= perdeuCreditos;
+        municao -= perdeuMunicao;
+        dropMorte = new Drop(x + 16f, y + 16f, "CREDITOS_MUNICAO", perdeuCreditos, perdeuMunicao);
+    }
+
+    // ITEM 28: recolher o marcador devolve exatamente o que caiu.
+    public boolean recolherDrop() {
+        if (dropMorte == null) return false;
+        creditos += dropMorte.creditos;
+        municao += dropMorte.municao;
+        dropMorte = null;
+        return true;
+    }
+
+    // ITEM 25: devolve 1 quando soltou SPACE com carga suficiente e 0 para tiro normal.
+    public int atualizarCargaAtaque(float delta, boolean spacePressionado) {
+        if (spacePressionado) {
+            cargaAtaque = Math.min(2.5f, cargaAtaque + delta);
+        } else if (spaceAnterior) {
+            int resultado = cargaAtaque >= 0.8f ? 2 : 1;
+            cargaAtaque = 0f;
+            spaceAnterior = false;
+            return resultado;
+        }
+        spaceAnterior = spacePressionado;
+        return 0;
+    }
+
+    public float progressoCargaAtaque() {
+        return Math.min(1f, cargaAtaque / 0.8f);
+    }
+
+    /** Atualiza apenas o combate e os efeitos temporarios. */
     public void atualizarCombate(float delta) {
         if (cooldownTiro > 0f) {
             cooldownTiro -= delta;
@@ -100,6 +189,40 @@ public class PlayerStatus {
         }
 
         atualizarRegenMunicaoZerada(delta);
+        atualizarEfeitoEspecial(delta);
+    }
+
+    // ITEM 23: gelo dura alguns segundos e reduz a velocidade; veneno causa dano por segundo.
+    private void atualizarEfeitoEspecial(float delta) {
+        if (efeitoTimer <= 0f) {
+            efeitoTimer = 0f;
+            efeitoTipo = "";
+            return;
+        }
+
+        if ("VENENO".equals(efeitoTipo)) {
+            hp -= VENENO_HP_POR_SEGUNDO * dificuldade.multiplicadorDanoRecebido * delta;
+            if (hp <= 0f) {
+                hp = 0f;
+                missaoFalhou = true;
+            }
+        }
+
+        efeitoTimer -= delta;
+        if (efeitoTimer <= 0f) {
+            efeitoTimer = 0f;
+            efeitoTipo = "";
+        }
+    }
+
+    public void aplicarEfeitoEspecial(String tipo) {
+        if (!"GELO".equals(tipo) && !"VENENO".equals(tipo)) return;
+        efeitoTipo = tipo;
+        efeitoTimer = EFEITO_DURACAO;
+    }
+
+    public float getMultiplicadorVelocidade() {
+        return "GELO".equals(efeitoTipo) && efeitoTimer > 0f ? 0.5f : 1f;
     }
 
     /** REGRA VISIVEL: municao zerada -> 8s depois, +10 municao automaticamente. */
@@ -130,7 +253,6 @@ public class PlayerStatus {
     }
 
     public void recarregarNaBase(float delta) {
-        oxigenio = Math.min(100f, oxigenio + 35f * delta);
         hp = Math.min(100f, hp + 20f * delta);
     }
 
@@ -143,7 +265,6 @@ public class PlayerStatus {
         if (inventarioGelo <= 0) return false;
         inventarioGelo--;
         agua += 1;
-        oxigenio = Math.min(100f, oxigenio + 10f);
         combustivel += 1;
         return true;
     }
@@ -161,7 +282,24 @@ public class PlayerStatus {
         return count;
     }
 
+    public void sofrerDano(float dano) {
+        hp -= dano * dificuldade.multiplicadorDanoRecebido;
+        if (hp <= 0f) { hp = 0f; missaoFalhou = true; }
+    }
+
+    /** Drop de materiais: todo inimigo deixa um material usado no crafting. */
+    public String materialDrop(int seed) {
+        switch (Math.abs(seed) % 4) {
+            case 0: return "METAL";
+            case 1: return "CIRCUITO";
+            case 2: return "GELO";
+            default: return "PECA";
+        }
+    }
+
+    public void registrarChefeMorto(String id) { if (id != null) chefesMortos.add(id); }
+
     public boolean isMorto() {
-        return oxigenio <= 0f || hp <= 0f;
+        return hp <= 0f;
     }
 }

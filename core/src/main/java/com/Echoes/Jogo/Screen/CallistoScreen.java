@@ -1,6 +1,8 @@
 package com.Echoes.Jogo.Screen;
 
 import com.Echoes.Jogo.Entities.BossCalisto;
+import com.Echoes.Jogo.Entities.Drone;
+import com.Echoes.Jogo.Entities.Inimigo;
 import com.Echoes.Jogo.Entities.PlayerStatus;
 import com.Echoes.Jogo.Entities.Portal;
 import com.Echoes.Jogo.Entities.Projectile;
@@ -11,6 +13,8 @@ import com.Echoes.Jogo.Managers.ParticleManager;
 import com.Echoes.Jogo.Managers.SaveManager;
 import com.Echoes.Jogo.Ui.DialogueSystem;
 import com.Echoes.Jogo.Ui.Hud;
+import com.Echoes.Jogo.Ui.LojaUI;
+import com.Echoes.Jogo.Ui.InventoryUI;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
@@ -70,9 +74,13 @@ public class CallistoScreen implements Screen {
     private DialogueSystem dialogueSystem;
 
     private List<Projectile> projeteis;
+    private Drone drone;
+    private List<Projectile> projeteisDrone;
     private ParticleManager particleManager;
 
     private Hud hud;
+    private LojaUI lojaUI;
+    private InventoryUI inventoryUI;
     private MissionState missao;
     private String textoMissao = "Calisto: o gelo aqui esconde algo que muda de forma.";
 
@@ -82,6 +90,7 @@ public class CallistoScreen implements Screen {
 
     private boolean pausado = false;
     private boolean trocandoTela = false;
+    private Rectangle checkpoint;
 
     public CallistoScreen(Main game) {
         this.game = game;
@@ -119,10 +128,20 @@ public class CallistoScreen implements Screen {
 
         player = new Rectangle(100, WORLD_HEIGHT / 2f, 64, 64);
 
+        checkpoint = new Rectangle(300f, 300f, 70f, 70f);
+        if (status.temCheckpoint && "CALISTO".equals(status.checkpointFase)) {
+            player.setPosition(status.checkpointX, status.checkpointY);
+        }
+
         projeteis = new ArrayList<>();
         projeteisBoss = new ArrayList<>();
+        projeteisDrone = new ArrayList<>();
+        drone = (status.droneAtivo && status.inventario.tem("DRONE"))
+            ? new Drone(player.x - 55f, player.y - 35f, status.nivelUpgradeDrone) : null;
         particleManager = new ParticleManager();
         hud = new Hud();
+        inventoryUI = new InventoryUI();
+        lojaUI = new LojaUI();
         missao = new MissionState();
 
         if (!status.inventario.tem("CHAVE_LUZ")) {
@@ -151,6 +170,8 @@ public class CallistoScreen implements Screen {
 
     @Override
     public void render(float delta) {
+        com.Echoes.Jogo.Entities.Inimigo.MULTIPLICADOR_VELOCIDADE_INIMIGO = status.dificuldade.multiplicadorVelocidadeInimigo;
+        inventoryUI.update(status);
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
             pausado = !pausado;
         }
@@ -165,12 +186,18 @@ public class CallistoScreen implements Screen {
         } else if (!status.missaoFalhou) {
             if (dialogueSystem.ativo) {
                 dialogueSystem.update();
+            } else if (lojaUI.isAberta()) {
+                lojaUI.update(delta, status);
             } else {
                 handleInput(delta);
                 updateBoss(delta);
                 updateProjeteisBoss(delta);
                 updateProjeteis(delta);
+                updateDrone(delta);
                 checkColisoes(delta);
+                if (status.dropMorte != null && player.overlaps(status.dropMorte.bounds)) {
+                    status.recolherDrop();
+                }
                 checkPortalAharin();
                 atualizarTextoMissao();
                 updateCamera();
@@ -181,9 +208,16 @@ public class CallistoScreen implements Screen {
         }
 
         if (status.missaoFalhou) {
-            game.setScreen(new GameOverScreen(game));
-            dispose();
-            return;
+            if (status.temCheckpoint && "LUA".equals(status.checkpointFase)) {
+                status.criarDropMorte(player.x, player.y);
+                player.setPosition(status.checkpointX, status.checkpointY);
+                status.respawnNoCheckpoint();
+                SaveManager.salvarJogo(status, missao);
+            } else {
+                game.setScreen(new GameOverScreen(game));
+                dispose();
+                return;
+            }
         }
 
         if (trocandoTela) {
@@ -206,6 +240,8 @@ public class CallistoScreen implements Screen {
             extraHud = "Area segura";
         }
         hud.render(shapeRenderer, batch, font, hudCamera, status, textoMissao, extraHud, 720);
+        lojaUI.render(shapeRenderer, batch, font, hudCamera, status);
+        inventoryUI.render(shapeRenderer, batch, font, hudCamera, status);
 
         if (dialogueSystem.ativo) {
             dialogueSystem.render(shapeRenderer, batch, font, 1280, 720);
@@ -217,6 +253,25 @@ public class CallistoScreen implements Screen {
     }
 
     private void handleInput(float delta) {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.B)) { lojaUI.abrir(); return; }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.E)) {
+            if (player.overlaps(checkpoint)) {
+                status.salvarCheckpoint(checkpoint.x + checkpoint.width / 2f - player.width / 2f, checkpoint.y + checkpoint.height / 2f - player.height / 2f, "CALISTO");
+                SaveManager.salvarJogo(status, missao);
+            }
+        }
+
+
+        int ataqueSpace = status.atualizarCargaAtaque(delta, Gdx.input.isKeyPressed(Input.Keys.SPACE));
+        if (ataqueSpace > 0 && status.podeAtirar()) {
+            Vector2 mouseWorld = viewport.unproject(new Vector2(Gdx.input.getX(), Gdx.input.getY()));
+            float startX = player.x + player.width / 2f;
+            float startY = player.y + player.height / 2f;
+            float dano = (ataqueSpace == 2 ? 100f : 50f) * (1f + status.nivelUpgradeArma * 0.5f);
+            float tamanho = ataqueSpace == 2 ? 11f : 5f;
+            projeteis.add(new Projectile(startX, startY, mouseWorld.x, mouseWorld.y, 600f, 500f).comForca(dano, tamanho));
+        }
+
         float dx = 0, dy = 0;
 
         if (Gdx.input.isKeyPressed(Input.Keys.W) || Gdx.input.isKeyPressed(Input.Keys.UP)) dy += 1;
@@ -230,12 +285,22 @@ public class CallistoScreen implements Screen {
         player.x = MathUtils.clamp(player.x, 0, WORLD_WIDTH - player.width);
         player.y = MathUtils.clamp(player.y, 0, WORLD_HEIGHT - player.height);
 
+        if (Gdx.input.isKeyJustPressed(Input.Keys.C) && status.inventario.tem("DRONE")) {
+            if (drone == null) {
+                drone = new Drone(player.x - 55f, player.y - 35f, status.nivelUpgradeDrone);
+                status.droneAtivo = true;
+            } else {
+                drone = null;
+                status.droneAtivo = false;
+            }
+        }
+
         if (Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) {
             if (status.podeAtirar()) {
                 Vector2 mouseWorld = viewport.unproject(new Vector2(Gdx.input.getX(), Gdx.input.getY()));
                 float startX = player.x + player.width / 2f;
                 float startY = player.y + player.height / 2f;
-                projeteis.add(new Projectile(startX, startY, mouseWorld.x, mouseWorld.y, 600f, 500f));
+                projeteis.add(new Projectile(startX, startY, mouseWorld.x, mouseWorld.y, 600f, 500f).comForca(50f * (1f + status.nivelUpgradeArma * 0.5f), 5f + status.nivelUpgradeArma));
             }
         }
     }
@@ -258,11 +323,8 @@ public class CallistoScreen implements Screen {
 
             if (player.contains(p.x, p.y)) {
                 p.ativo = false;
-                status.hp -= 12f;
-                if (status.hp <= 0) {
-                    status.hp = 0;
-                    status.missaoFalhou = true;
-                }
+                status.sofrerDano(12f);
+                status.aplicarEfeitoEspecial(p.efeitoTipo);
                 projeteisBoss.remove(i);
             }
         }
@@ -280,7 +342,7 @@ public class CallistoScreen implements Screen {
 
             if (bossCalisto != null && bossCalisto.ativo && bossCalisto.bounds.contains(p.x, p.y)) {
                 p.ativo = false;
-                bossCalisto.tomarDano(50f);
+                bossCalisto.tomarDano(p.dano);
                 particleManager.spawnColeta(p.x, p.y);
 
                 if (bossCalisto.forma != formaAnterior) {
@@ -294,6 +356,10 @@ public class CallistoScreen implements Screen {
                 }
 
                 if (bossCalisto.mortoFinal && !status.inventario.tem("CHAVE_LUZ")) {
+                    status.inimigosDerrotados++;
+                    status.creditos += 10;
+                    status.inventario.add(status.materialDrop(3));
+                    status.registrarChefeMorto("CALISTO");
                     onBossCalistoDerrotado();
                 }
 
@@ -318,11 +384,7 @@ public class CallistoScreen implements Screen {
         if (bossCalisto.estaPiscando()) return;
 
         if (player.overlaps(bossCalisto.bounds)) {
-            status.hp -= bossCalisto.danoContato * delta;
-            if (status.hp <= 0) {
-                status.hp = 0;
-                status.missaoFalhou = true;
-            }
+            status.sofrerDano(bossCalisto.danoContato * delta);
         }
     }
 
@@ -336,7 +398,7 @@ public class CallistoScreen implements Screen {
             status.curarAoTrocarFase();
             status.faseAtual = "AHARIN";
             SaveManager.salvarJogo(status, missao);
-            game.setScreen(new AharinScreen(game, status));
+            game.setScreen(new CutsceneScreen(game, status, CutsceneScreen.Destino.AHARIN));
             trocandoTela = true;
         }
     }
@@ -356,6 +418,23 @@ public class CallistoScreen implements Screen {
         if (regenMunicaoTimer <= 0f) {
             regenMunicaoTimer = REGEN_MUNICAO_INTERVALO;
             status.municao += REGEN_MUNICAO_QTD;
+        }
+    }
+
+    private void updateDrone(float delta) {
+        if (drone == null) return;
+        List<Inimigo> alvos = new ArrayList<>();
+        if (bossCalisto != null && bossCalisto.ativo) alvos.add(bossCalisto);
+        drone.update(delta, player, alvos, projeteisDrone);
+        for (int i = projeteisDrone.size() - 1; i >= 0; i--) {
+            Projectile p = projeteisDrone.get(i);
+            p.update(delta);
+            if (!p.ativo) { projeteisDrone.remove(i); continue; }
+            if (bossCalisto != null && bossCalisto.ativo && bossCalisto.bounds.contains(p.x, p.y)) {
+                p.ativo = false;
+                bossCalisto.tomarDano(35f);
+                projeteisDrone.remove(i);
+            }
         }
     }
 
@@ -388,6 +467,17 @@ public class CallistoScreen implements Screen {
                 barraLargura * (bossCalisto.hp / bossCalisto.hpMax), 10);
         }
 
+        if (drone != null) {
+            shapeRenderer.setColor(drone.getCor());
+            shapeRenderer.rect(drone.bounds.x, drone.bounds.y, drone.bounds.width, drone.bounds.height);
+        }
+        for (Projectile p : projeteisDrone) {
+            if (p.ativo) {
+                shapeRenderer.setColor(Color.CYAN);
+                shapeRenderer.circle(p.x, p.y, 4);
+            }
+        }
+
         for (Projectile p : projeteis) {
             p.render(shapeRenderer);
         }
@@ -403,9 +493,24 @@ public class CallistoScreen implements Screen {
         shapeRenderer.setColor(portalAberto ? new Color(1f, 0.85f, 0.15f, 1f) : Color.DARK_GRAY);
         shapeRenderer.rect(portalAharin.bounds.x, portalAharin.bounds.y, portalAharin.bounds.width, portalAharin.bounds.height);
 
+        // ITEM 24: estatua/painel visual do checkpoint.
+        shapeRenderer.setColor(Color.GOLD);
+        shapeRenderer.rect(checkpoint.x, checkpoint.y, checkpoint.width, checkpoint.height);
+        shapeRenderer.setColor(Color.WHITE);
+        shapeRenderer.rect(checkpoint.x + 10, checkpoint.y + 10, checkpoint.width - 20, checkpoint.height - 20);
+
         if (regPlayer == null) {
             shapeRenderer.setColor(COR_PLAYER_CALISTO);
             shapeRenderer.rect(player.x, player.y, player.width, player.height);
+        }
+
+        // ITEM 28: marcador do cadaver com os recursos perdidos.
+        if (status.dropMorte != null) {
+            shapeRenderer.setColor(Color.YELLOW);
+            shapeRenderer.circle(status.dropMorte.x, status.dropMorte.y, 18f);
+            shapeRenderer.setColor(Color.WHITE);
+            shapeRenderer.rect(status.dropMorte.x - 4f, status.dropMorte.y - 12f, 8f, 24f);
+            shapeRenderer.rect(status.dropMorte.x - 12f, status.dropMorte.y - 4f, 24f, 8f);
         }
 
         shapeRenderer.end();
@@ -414,6 +519,15 @@ public class CallistoScreen implements Screen {
 
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
+
+        if (status.dropMorte != null) {
+            font.setColor(Color.YELLOW);
+            font.draw(batch, "RECUPERE: " + status.dropMorte.creditos + " C / " + status.dropMorte.municao + " M",
+                status.dropMorte.x - 55f, status.dropMorte.y + 35f);
+        }
+
+        font.setColor(Color.GOLD);
+        font.draw(batch, status.temCheckpoint && "CALISTO".equals(status.checkpointFase) ? "CHECKPOINT SALVO" : "CHECKPOINT [E]", checkpoint.x - 10, checkpoint.y + checkpoint.height + 25);
 
         if (regPlayer != null) {
             batch.setColor(COR_PLAYER_CALISTO);

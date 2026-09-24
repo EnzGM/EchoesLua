@@ -65,7 +65,7 @@ public class GameOverScreen implements Screen {
         fontTitulo.draw(batch, layout, 640 - layout.width / 2f, 420);
 
         fontTexto.setColor(Color.WHITE);
-        layout.setText(fontTexto, "O oxigenio ou a energia se esgotaram.");
+        layout.setText(fontTexto, "A energia do astronauta se esgotou.");
         fontTexto.draw(batch, layout, 640 - layout.width / 2f, 340);
 
         layout.setText(fontTexto, "Pressione ENTER ou M para voltar ao menu");

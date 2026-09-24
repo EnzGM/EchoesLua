@@ -42,7 +42,7 @@ public class GameAssets {
         return atlas.findRegion(nome);
     }
 
-    /** Tenta achar "item_<tipo>" (ex.: item_oxigenio). Retorna null se nao existir essa sprite. */
+    /** Tenta achar "item_<tipo>" (ex.: item_metal). Retorna null se nao existir essa sprite. */
     public TextureAtlas.AtlasRegion getItemRegion(String tipoNome) {
         return getRegion("item_" + tipoNome.toLowerCase());
     }

@@ -2,6 +2,7 @@ package com.Echoes.Jogo.Entities;
 
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.Rectangle;
+import com.badlogic.gdx.math.MathUtils;
 
 import java.util.List;
 
@@ -45,15 +46,31 @@ public class BossTita extends Inimigo {
     }
 
     /** Padrão de tiro do BossTita: 4 projéteis simultâneos nas direções cardeais. */
+    private float rotacao = 0f;
+
     private void dispararCruz(List<Projectile> lista) {
         float sx = bounds.x + bounds.width / 2f;
         float sy = bounds.y + bounds.height / 2f;
-        float[][] direcoes = {{1f, 0f}, {-1f, 0f}, {0f, 1f}, {0f, -1f}};
 
-        for (float[] dir : direcoes) {
-            float destX = sx + dir[0] * 500f;
-            float destY = sy + dir[1] * 500f;
-            lista.add(new Projectile(sx, sy, destX, destY, 300f, 650f));
+        // Flor de 12 projéteis que gira a cada rajada.
+        rotacao += 0.17f;
+        for (int i = 0; i < 12; i++) {
+            float ang = rotacao + i * (MathUtils.PI2 / 12f);
+            float destX = sx + MathUtils.cos(ang) * 850f;
+            float destY = sy + MathUtils.sin(ang) * 850f;
+            lista.add(Projectile.tiroEspecialInimigo(
+                sx, sy, destX, destY, 300f, 850f
+            ).comForca(20f, 7f));
+        }
+
+        // Quatro tiros um pouco mais rápidos, formando outra camada do padrão.
+        for (int i = 0; i < 4; i++) {
+            float ang = rotacao + 0.26f + i * (MathUtils.PI2 / 4f);
+            float destX = sx + MathUtils.cos(ang) * 850f;
+            float destY = sy + MathUtils.sin(ang) * 850f;
+            lista.add(Projectile.tiroEspecialInimigo(
+                sx, sy, destX, destY, 360f, 850f
+            ).comForca(24f, 6f));
         }
     }
 

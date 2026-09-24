@@ -1,6 +1,7 @@
 package com.Echoes.Jogo.Screen;
 
 import com.Echoes.Jogo.Entities.BossTita;
+import com.Echoes.Jogo.Entities.Drone;
 import com.Echoes.Jogo.Entities.Inimigo;
 import com.Echoes.Jogo.Entities.PlayerStatus;
 import com.Echoes.Jogo.Entities.Portal;
@@ -12,12 +13,16 @@ import com.Echoes.Jogo.Managers.ParticleManager;
 import com.Echoes.Jogo.Managers.SaveManager;
 import com.Echoes.Jogo.Ui.DialogueSystem;
 import com.Echoes.Jogo.Ui.Hud;
+import com.Echoes.Jogo.Ui.LojaUI;
+import com.Echoes.Jogo.Ui.InventoryUI;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.Pixmap;
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
@@ -62,6 +67,10 @@ public class TitanScreen implements Screen {
     private List<Inimigo> guardioes;
     private BossTita bossTita;
 
+    // ITEM 24: em Tita o drone so ilumina (nao atira) — combina com o pedido
+    // "ou apenas iluminar (luz no escuro de Tita)".
+    private Drone drone;
+
     private Portal portalCalisto;
     private boolean portalAberto = false;
 
@@ -72,6 +81,8 @@ public class TitanScreen implements Screen {
     private ParticleManager particleManager;
 
     private Hud hud;
+    private LojaUI lojaUI;
+    private InventoryUI inventoryUI;
     private MissionState missao;
     private String textoMissao = "Atencao: Sinal desconhecido detectado em Tita!";
 
@@ -81,6 +92,20 @@ public class TitanScreen implements Screen {
 
     private boolean pausado = false;
     private boolean trocandoTela = false;
+    private Rectangle checkpoint;
+
+    // ITEM 26: puzzle das tres alavancas de Tita. Ordem correta: 2-1-3.
+    private final int[] ordemEsperada = {2, 1, 3};
+    private final List<Integer> ordemAlavancas = new ArrayList<>();
+    private final Rectangle[] alavancas = new Rectangle[3];
+    private boolean portaPuzzleAberta = false;
+    private String textoPuzzle = "";
+    private float textoPuzzleTimer = 0f;
+    private Rectangle portaPuzzle;
+
+    // ITEM 27: lanterna manual de Tita, usando a mesma area de luz do drone.
+    private boolean lanterna = false;
+    private Texture lanternaOverlay;
 
     public TitanScreen(Main game) {
         this.game = game;
@@ -116,16 +141,32 @@ public class TitanScreen implements Screen {
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
 
+        lanternaOverlay = criarOverlayLanterna();
+
         player = new Rectangle(100, WORLD_HEIGHT / 2f, 64, 64);
+
+        checkpoint = new Rectangle(360f, 330f, 70f, 70f);
+        if (status.temCheckpoint && "TITA".equals(status.checkpointFase)) {
+            player.setPosition(status.checkpointX, status.checkpointY);
+        }
 
         obstaculos = new ArrayList<>();
         obstaculos.add(new Rectangle(500, 250, 90, 90));
         obstaculos.add(new Rectangle(900, 480, 90, 90));
 
+        // ITEM 26: tres alavancas visiveis no setor norte de Tita.
+        alavancas[0] = new Rectangle(600, 610, 42, 70);
+        alavancas[1] = new Rectangle(690, 610, 42, 70);
+        alavancas[2] = new Rectangle(780, 610, 42, 70);
+        portaPuzzle = new Rectangle(1050, 610, 110, 130);
+        portaPuzzleAberta = status.inventario.tem("PORTA_TITA_ABERTA");
+
         projeteis = new ArrayList<>();
         projeteisInimigos = new ArrayList<>();
         particleManager = new ParticleManager();
         hud = new Hud();
+        inventoryUI = new InventoryUI();
+        lojaUI = new LojaUI();
         missao = new MissionState();
 
         guardioes = new ArrayList<>();
@@ -133,6 +174,14 @@ public class TitanScreen implements Screen {
             spawnGuardioes();
         }
         bossTita = null;
+
+        // ITEM 24: em Tita o drone reaparece em modo iluminar, se estava chamado
+        if (status.droneAtivo && status.inventario.tem("DRONE")) {
+            drone = new Drone(player.x - 55f, player.y - 35f, status.nivelUpgradeDrone);
+            drone.modoIluminar = lanterna;
+        } else {
+            drone = null;
+        }
 
         portalCalisto = new Portal(WORLD_WIDTH - 220f, WORLD_HEIGHT / 2f - 45f, 90, 90);
         portalAberto = status.inventario.tem("CHAVE_TITA");
@@ -165,6 +214,8 @@ public class TitanScreen implements Screen {
 
     @Override
     public void render(float delta) {
+        com.Echoes.Jogo.Entities.Inimigo.MULTIPLICADOR_VELOCIDADE_INIMIGO = status.dificuldade.multiplicadorVelocidadeInimigo;
+        inventoryUI.update(status);
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
             pausado = !pausado;
         }
@@ -177,15 +228,22 @@ public class TitanScreen implements Screen {
                 return;
             }
         } else if (!status.missaoFalhou) {
-            if (dialogueSystem.ativo) {
+            if (lojaUI.isAberta()) {
+                lojaUI.update(delta, status);
+            } else if (dialogueSystem.ativo) {
                 dialogueSystem.update();
             } else {
                 handleInput(delta);
+                if (textoPuzzleTimer > 0f) textoPuzzleTimer -= delta;
                 updateGuardioes(delta);
                 updateProjeteisInimigos(delta);
                 updateProjeteis(delta);
+                if (drone != null) drone.update(delta, player, null, null);
                 checkBossTita();
                 checkColisoes(delta);
+                if (status.dropMorte != null && player.overlaps(status.dropMorte.bounds)) {
+                    status.recolherDrop();
+                }
                 checkPortalCalisto();
                 atualizarTextoMissao();
                 updateCamera();
@@ -196,9 +254,16 @@ public class TitanScreen implements Screen {
         }
 
         if (status.missaoFalhou) {
-            game.setScreen(new GameOverScreen(game));
-            dispose();
-            return;
+            if (status.temCheckpoint && "LUA".equals(status.checkpointFase)) {
+                status.criarDropMorte(player.x, player.y);
+                player.setPosition(status.checkpointX, status.checkpointY);
+                status.respawnNoCheckpoint();
+                SaveManager.salvarJogo(status, missao);
+            } else {
+                game.setScreen(new GameOverScreen(game));
+                dispose();
+                return;
+            }
         }
 
         if (trocandoTela) {
@@ -210,6 +275,7 @@ public class TitanScreen implements Screen {
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
         desenharMundo();
+        desenharEscuridao();
 
         String extraHud;
         if (bossTita != null && bossTita.ativo) {
@@ -226,8 +292,17 @@ public class TitanScreen implements Screen {
         if (dica != null) {
             extraHud += " | " + dica;
         }
+        if (!portaPuzzleAberta) {
+            extraHud += " | ALAVANCAS " + ordemAlavancas.size() + "/3";
+        }
+        if (textoPuzzleTimer > 0f) {
+            extraHud += " | " + textoPuzzle;
+        }
+        extraHud += " | LANTERNA: " + (lanterna ? "ON" : "OFF") + " [F]";
 
         hud.render(shapeRenderer, batch, font, hudCamera, status, textoMissao, extraHud, 720);
+        lojaUI.render(shapeRenderer, batch, font, hudCamera, status);
+        inventoryUI.render(shapeRenderer, batch, font, hudCamera, status);
 
         if (dialogueSystem.ativo) {
             dialogueSystem.render(shapeRenderer, batch, font, 1280, 720);
@@ -239,6 +314,38 @@ public class TitanScreen implements Screen {
     }
 
     private void handleInput(float delta) {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.B)) { lojaUI.abrir(); return; }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.E)) {
+            if (player.overlaps(checkpoint)) {
+                status.salvarCheckpoint(checkpoint.x + checkpoint.width / 2f - player.width / 2f, checkpoint.y + checkpoint.height / 2f - player.height / 2f, "TITA");
+                SaveManager.salvarJogo(status, missao);
+                textoPuzzle = "CHECKPOINT SALVO";
+                textoPuzzleTimer = 2f;
+            } else {
+                for (int i = 0; i < alavancas.length; i++) {
+                    if (!player.overlaps(alavancas[i]) || portaPuzzleAberta) continue;
+                    acionarAlavanca(i + 1);
+                    break;
+                }
+            }
+        }
+
+        // ITEM 27: F liga/desliga a lanterna. O drone continua sendo outra fonte de luz.
+        if (Gdx.input.isKeyJustPressed(Input.Keys.F)) {
+            lanterna = !lanterna;
+            if (drone != null) drone.modoIluminar = lanterna;
+        }
+
+        int ataqueSpace = status.atualizarCargaAtaque(delta, Gdx.input.isKeyPressed(Input.Keys.SPACE));
+        if (ataqueSpace > 0 && status.podeAtirar()) {
+            Vector2 mouseWorld = viewport.unproject(new Vector2(Gdx.input.getX(), Gdx.input.getY()));
+            float startX = player.x + player.width / 2f;
+            float startY = player.y + player.height / 2f;
+            float dano = (ataqueSpace == 2 ? 100f : 50f) * (1f + status.nivelUpgradeArma * 0.5f);
+            float tamanho = ataqueSpace == 2 ? 11f : 5f;
+            projeteis.add(new Projectile(startX, startY, mouseWorld.x, mouseWorld.y, 600f, 500f).comForca(dano, tamanho));
+        }
+
         float dx = 0, dy = 0;
 
         if (Gdx.input.isKeyPressed(Input.Keys.W) || Gdx.input.isKeyPressed(Input.Keys.UP)) dy += 1;
@@ -253,12 +360,52 @@ public class TitanScreen implements Screen {
                 Vector2 mouseWorld = viewport.unproject(new Vector2(Gdx.input.getX(), Gdx.input.getY()));
                 float startX = player.x + player.width / 2f;
                 float startY = player.y + player.height / 2f;
-                projeteis.add(new Projectile(startX, startY, mouseWorld.x, mouseWorld.y, 600f, 500f));
+                projeteis.add(new Projectile(startX, startY, mouseWorld.x, mouseWorld.y, 600f, 500f).comForca(50f * (1f + status.nivelUpgradeArma * 0.5f), 5f + status.nivelUpgradeArma));
+            }
+        }
+
+        // ITEM 24: C chama/dispensa o drone (em Tita ele so ilumina, nao atira)
+        if (Gdx.input.isKeyJustPressed(Input.Keys.C) && status.inventario.tem("DRONE")) {
+            if (drone == null) {
+                drone = new Drone(player.x - 55f, player.y - 35f, status.nivelUpgradeDrone);
+                drone.modoIluminar = lanterna;
+                status.droneAtivo = true;
+            } else {
+                drone = null;
+                status.droneAtivo = false;
             }
         }
     }
 
+    private void acionarAlavanca(int numero) {
+        if (ordemAlavancas.size() >= ordemEsperada.length) return;
+
+        int esperado = ordemEsperada[ordemAlavancas.size()];
+        if (numero != esperado) {
+            ordemAlavancas.clear();
+            textoPuzzle = "ORDEM ERRADA! ALAVANCAS 0/3";
+            textoPuzzleTimer = 2.5f;
+            return;
+        }
+
+        ordemAlavancas.add(numero);
+        if (ordemAlavancas.size() == ordemEsperada.length) {
+            portaPuzzleAberta = true;
+            status.inventario.add("PORTA_TITA_ABERTA");
+            status.municao += 5;
+            textoPuzzle = "ORDEM CORRETA! PORTA ABERTA +5 MUNICAO";
+            textoPuzzleTimer = 4f;
+            SaveManager.salvarJogo(status, missao);
+        } else {
+            textoPuzzle = "ALAVANCAS " + ordemAlavancas.size() + "/3";
+            textoPuzzleTimer = 1.5f;
+        }
+    }
+
     private void moverJogador(float moveX, float moveY) {
+        float multiplicadorVelocidade = status.getMultiplicadorVelocidade();
+        moveX *= multiplicadorVelocidade;
+        moveY *= multiplicadorVelocidade;
         float novoX = MathUtils.clamp(player.x + moveX, 0, WORLD_WIDTH - player.width);
         Rectangle testeX = new Rectangle(novoX, player.y, player.width, player.height);
         if (!colideComObstaculo(testeX)) player.x = novoX;
@@ -295,11 +442,8 @@ public class TitanScreen implements Screen {
 
             if (player.contains(p.x, p.y)) {
                 p.ativo = false;
-                status.hp -= 12f;
-                if (status.hp <= 0) {
-                    status.hp = 0;
-                    status.missaoFalhou = true;
-                }
+                status.sofrerDano(12f);
+                status.aplicarEfeitoEspecial(p.efeitoTipo);
                 projeteisInimigos.remove(i);
             }
         }
@@ -318,10 +462,14 @@ public class TitanScreen implements Screen {
             for (Inimigo g : guardioes) {
                 if (g.ativo && g.bounds.contains(p.x, p.y)) {
                     p.ativo = false;
-                    g.tomarDano(50f);
+                    g.tomarDano(p.dano);
                     particleManager.spawnColeta(p.x, p.y);
 
                     if (!g.ativo) {
+                        // ITEM 22: derrotar um guardiao rende creditos.
+                        status.inimigosDerrotados++;
+                        status.creditos += (g == bossTita ? 10 : 5);
+                        status.inventario.add(status.materialDrop((int) (g.bounds.x + g.bounds.y + status.inimigosDerrotados)));
                         if (g == bossTita) {
                             onBossTitaDerrotado();
                         } else {
@@ -357,6 +505,7 @@ public class TitanScreen implements Screen {
     }
 
     private void onBossTitaDerrotado() {
+        status.registrarChefeMorto("TITA");
         status.inventario.add("CHAVE_TITA");
         portalAberto = true;
         portalCalisto.ativo = true;
@@ -370,11 +519,7 @@ public class TitanScreen implements Screen {
     private void checkColisoes(float delta) {
         for (Inimigo g : guardioes) {
             if (g.ativo && player.overlaps(g.bounds)) {
-                status.hp -= g.danoContato * delta;
-                if (status.hp <= 0) {
-                    status.hp = 0;
-                    status.missaoFalhou = true;
-                }
+                status.sofrerDano(g.danoContato * delta);
             }
         }
     }
@@ -384,7 +529,7 @@ public class TitanScreen implements Screen {
             status.curarAoTrocarFase();
             status.faseAtual = "CALISTO";
             SaveManager.salvarJogo(status, missao);
-            game.setScreen(new CallistoScreen(game, status));
+            game.setScreen(new CutsceneScreen(game, status, CutsceneScreen.Destino.CALISTO));
             trocandoTela = true;
         }
     }
@@ -496,9 +641,44 @@ public class TitanScreen implements Screen {
         shapeRenderer.setColor(portalAberto ? Color.MAGENTA : Color.DARK_GRAY);
         shapeRenderer.rect(portalCalisto.bounds.x, portalCalisto.bounds.y, portalCalisto.bounds.width, portalCalisto.bounds.height);
 
+        // ITEM 24: halo de luz do drone (desenhado antes do player, por baixo)
+        if (drone != null && drone.modoIluminar) {
+            shapeRenderer.setColor(1f, 1f, 0.75f, 0.12f);
+            shapeRenderer.circle(drone.bounds.x + drone.bounds.width / 2f, drone.bounds.y + drone.bounds.height / 2f, drone.getRaioLuz());
+        }
+
+        // ITEM 26: alavancas e porta do puzzle.
+        for (int i = 0; i < alavancas.length; i++) {
+            boolean acionada = ordemAlavancas.contains(i + 1) || portaPuzzleAberta;
+            shapeRenderer.setColor(acionada ? Color.GREEN : Color.ORANGE);
+            shapeRenderer.rect(alavancas[i].x, alavancas[i].y, alavancas[i].width, alavancas[i].height);
+        }
+        shapeRenderer.setColor(portaPuzzleAberta ? Color.GREEN : Color.RED);
+        shapeRenderer.rect(portaPuzzle.x, portaPuzzle.y, portaPuzzle.width, portaPuzzle.height);
+
+        // ITEM 24: estatua/painel visual do checkpoint.
+        shapeRenderer.setColor(Color.GOLD);
+        shapeRenderer.rect(checkpoint.x, checkpoint.y, checkpoint.width, checkpoint.height);
+        shapeRenderer.setColor(Color.WHITE);
+        shapeRenderer.rect(checkpoint.x + 10, checkpoint.y + 10, checkpoint.width - 20, checkpoint.height - 20);
+
         if (regPlayer == null) {
             shapeRenderer.setColor(COR_PLAYER_TITA);
             shapeRenderer.rect(player.x, player.y, player.width, player.height);
+        }
+
+        if (drone != null) {
+            shapeRenderer.setColor(drone.getCor());
+            shapeRenderer.rect(drone.bounds.x, drone.bounds.y, drone.bounds.width, drone.bounds.height);
+        }
+
+        // ITEM 28: marcador do cadaver com os recursos perdidos.
+        if (status.dropMorte != null) {
+            shapeRenderer.setColor(Color.YELLOW);
+            shapeRenderer.circle(status.dropMorte.x, status.dropMorte.y, 18f);
+            shapeRenderer.setColor(Color.WHITE);
+            shapeRenderer.rect(status.dropMorte.x - 4f, status.dropMorte.y - 12f, 8f, 24f);
+            shapeRenderer.rect(status.dropMorte.x - 12f, status.dropMorte.y - 4f, 24f, 8f);
         }
 
         shapeRenderer.end();
@@ -507,6 +687,21 @@ public class TitanScreen implements Screen {
 
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
+
+        if (status.dropMorte != null) {
+            font.setColor(Color.YELLOW);
+            font.draw(batch, "RECUPERE: " + status.dropMorte.creditos + " C / " + status.dropMorte.municao + " M",
+                status.dropMorte.x - 55f, status.dropMorte.y + 35f);
+        }
+
+        font.setColor(Color.GOLD);
+        font.draw(batch, status.temCheckpoint && "TITA".equals(status.checkpointFase) ? "CHECKPOINT SALVO" : "CHECKPOINT [E]", checkpoint.x - 10, checkpoint.y + checkpoint.height + 25);
+
+        font.setColor(Color.WHITE);
+        for (int i = 0; i < alavancas.length; i++) {
+            font.draw(batch, String.valueOf(i + 1), alavancas[i].x + 15, alavancas[i].y + 42);
+        }
+        font.draw(batch, portaPuzzleAberta ? "PORTA ABERTA" : "PORTA [ALAVANCAS]", portaPuzzle.x - 20, portaPuzzle.y - 15);
 
         if (regPlayer != null) {
             batch.setColor(COR_PLAYER_TITA);
@@ -524,6 +719,61 @@ public class TitanScreen implements Screen {
         font.draw(batch, txtPortal, portalCalisto.bounds.x - 30, portalCalisto.bounds.y - 20);
 
         batch.end();
+    }
+
+    // ITEM 27: mascara escura com uma area transparente de luz.
+    private void desenharEscuridao() {
+        Vector2 luz = new Vector2(player.x + player.width / 2f, player.y + player.height / 2f);
+
+        if (lanterna || (drone != null && drone.modoIluminar)) {
+            if (drone != null && drone.modoIluminar) {
+                Vector2 ld = new Vector2(drone.bounds.x + drone.bounds.width / 2f, drone.bounds.y + drone.bounds.height / 2f);
+                luz.lerp(ld, 0.35f);
+            }
+
+            batch.setProjectionMatrix(camera.combined);
+            batch.begin();
+            batch.setColor(Color.WHITE);
+            batch.draw(lanternaOverlay, luz.x - 1100f, luz.y - 1100f, 2200f, 2200f);
+            batch.setColor(Color.WHITE);
+            batch.end();
+        } else {
+            shapeRenderer.setProjectionMatrix(camera.combined);
+            shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+            shapeRenderer.setColor(0f, 0f, 0f, 0.92f);
+            shapeRenderer.rect(camera.position.x - 640f, camera.position.y - 360f, 1280f, 720f);
+            shapeRenderer.end();
+        }
+    }
+
+    private Texture criarOverlayLanterna() {
+        final int tamanho = 512;
+        final float raioLivre = 125f;
+        final float raioTotal = 195f;
+        Pixmap pixmap = new Pixmap(tamanho, tamanho, Pixmap.Format.RGBA8888);
+        float centro = tamanho / 2f;
+
+        for (int y = 0; y < tamanho; y++) {
+            for (int x = 0; x < tamanho; x++) {
+                float dx = x - centro;
+                float dy = y - centro;
+                float dist = (float) Math.sqrt(dx * dx + dy * dy);
+                float alpha;
+                if (dist <= raioLivre) alpha = 0f;
+                else if (dist >= raioTotal) alpha = 0.92f;
+                else {
+                    float t = (dist - raioLivre) / (raioTotal - raioLivre);
+                    alpha = t * t * 0.92f;
+                }
+                pixmap.setColor(0f, 0f, 0f, alpha);
+                pixmap.drawPixel(x, y);
+            }
+        }
+
+        Texture textura = new Texture(pixmap);
+        textura.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+        pixmap.dispose();
+        return textura;
     }
 
     private void desenharPausa() {
@@ -555,6 +805,7 @@ public class TitanScreen implements Screen {
 
     @Override
     public void dispose() {
+        if (lanternaOverlay != null) lanternaOverlay.dispose();
         batch.dispose();
         shapeRenderer.dispose();
         font.dispose();

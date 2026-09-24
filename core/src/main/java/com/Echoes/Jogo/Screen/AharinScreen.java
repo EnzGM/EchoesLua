@@ -83,7 +83,7 @@ public class AharinScreen implements Screen {
             // ITEM 20: fim da terceira fala -> dispara o encerramento.
             trocandoTela = true;
             SaveManager.salvarJogo(status, missao);
-            game.setScreen(new EarthEndingScreen(game));
+            game.setScreen(new EndingSelectScreen(game, status));
             dispose();
             return;
         }

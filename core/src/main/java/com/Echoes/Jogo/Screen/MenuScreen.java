@@ -3,6 +3,7 @@ package com.Echoes.Jogo.Screen;
 import com.Echoes.Jogo.Entities.PlayerStatus;
 import com.Echoes.Jogo.Main;
 import com.Echoes.Jogo.Managers.MissionState;
+import com.Echoes.Jogo.Managers.Difficulty;
 import com.Echoes.Jogo.Managers.SaveManager;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
@@ -48,6 +49,7 @@ public class MenuScreen implements Screen {
 
     // Evita usar batch/stage ja descartados no mesmo frame em que o botao foi clicado
     private boolean saindo = false;
+    private Difficulty dificuldadeSelecionada = Difficulty.NORMAL;
 
     public MenuScreen(Main game) {
         this.game = game;
@@ -89,6 +91,25 @@ public class MenuScreen implements Screen {
             });
             table.add(btnContinuar).width(340f).height(72f).padBottom(20f).row();
         }
+
+        TextButton tituloDificuldade = new TextButton("DIFICULDADE: NORMAL", estiloBotao);
+        tituloDificuldade.setDisabled(true);
+        tituloDificuldade.getLabel().setFontScale(1.15f);
+        table.add(tituloDificuldade).width(340f).height(52f).padBottom(10f).row();
+
+        Table difTable = new Table();
+        for (Difficulty d : Difficulty.values()) {
+            TextButton b = new TextButton(d.nome, estiloBotao);
+            b.getLabel().setFontScale(1.0f);
+            b.addListener(new ClickListener() {
+                @Override public void clicked(InputEvent event, float x, float y) {
+                    dificuldadeSelecionada = d;
+                    tituloDificuldade.setText("DIFICULDADE: " + d.nome);
+                }
+            });
+            difTable.add(b).width(108f).height(48f).padRight(8f);
+        }
+        table.add(difTable).padBottom(18f).row();
 
         TextButton btnNovoJogo = new TextButton("NOVO JOGO", estiloBotao);
         btnNovoJogo.getLabel().setFontScale(1.4f);
@@ -151,7 +172,9 @@ public class MenuScreen implements Screen {
     /** NOVO JOGO sempre começa limpo — apaga qualquer save antigo de testes anteriores. */
     private void iniciarNovoJogo() {
         SaveManager.limparSave();
-        game.setScreen(new LunarScreen(game, new PlayerStatus()));
+        PlayerStatus novoStatus = new PlayerStatus();
+        novoStatus.dificuldade = dificuldadeSelecionada;
+        game.setScreen(new CutsceneScreen(game, novoStatus, CutsceneScreen.Destino.LUA));
         saindo = true;
     }
 

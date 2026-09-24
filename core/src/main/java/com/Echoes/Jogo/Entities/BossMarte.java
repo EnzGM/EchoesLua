@@ -47,20 +47,30 @@ public class BossMarte extends Inimigo {
     }
 
     /** Padrão de tiro do BossMarte: 2 projéteis levemente abertos, mirados no jogador. */
+    private float padraoAngulo = 0f;
+
     private void dispararDuplo(Rectangle player, List<Projectile> lista) {
         float sx = bounds.x + bounds.width / 2f;
         float sy = bounds.y + bounds.height / 2f;
         float tx = player.x + player.width / 2f;
         float ty = player.y + player.height / 2f;
 
-        float anguloBase = (float) Math.toDegrees(Math.atan2(ty - sy, tx - sx));
+        float base = (float) Math.atan2(ty - sy, tx - sx);
+        padraoAngulo += 0.22f;
 
-        for (int lado = -1; lado <= 1; lado += 2) {
-            float ang = (anguloBase + lado * ABERTURA_GRAUS) * MathUtils.degreesToRadians;
-            float destX = sx + MathUtils.cos(ang) * 500f;
-            float destY = sy + MathUtils.sin(ang) * 500f;
-            lista.add(new Projectile(sx, sy, destX, destY, 280f, 650f));
+        // Espiral em dois braços: o padrão gira a cada rajada.
+        for (int i = 0; i < 10; i++) {
+            float ang = base + padraoAngulo + i * (MathUtils.PI2 / 10f);
+            float destX = sx + MathUtils.cos(ang) * 800f;
+            float destY = sy + MathUtils.sin(ang) * 800f;
+            lista.add(Projectile.tiroEspecialInimigo(
+                sx, sy, destX, destY, 275f, 800f
+            ).comForca(18f, 7f));
         }
+
+        // Dois tiros mirados fecham os espaços próximos do jogador.
+        lista.add(Projectile.tiroEspecialInimigo(sx, sy, tx, ty, 320f, 750f)
+            .comForca(22f, 8f));
     }
 
     @Override

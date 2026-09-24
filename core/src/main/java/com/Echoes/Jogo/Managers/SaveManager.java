@@ -1,6 +1,7 @@
 package com.Echoes.Jogo.Managers;
 
 import com.Echoes.Jogo.Entities.PlayerStatus;
+import com.Echoes.Jogo.Managers.Difficulty;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Preferences;
 
@@ -11,7 +12,8 @@ public class SaveManager {
     // v3 (ITEM 15): adicionado o campo "inventario" (chaves dos bosses: CHAVE_LUA, etc).
     // v4 (ITEM 16): adicionado o campo "marteWavesConcluidas" (Boss de Marte).
     // v5 (ITEM 17): adicionado o campo "titaGuardioesDerrotados" (Boss de Tita).
-    private static final int SAVE_VERSION = 5;
+    // v6 (ITEM 24): adicionado o campo "droneAtivo" (drone companheiro).
+    private static final int SAVE_VERSION = 10;
 
     // Ordem de progresso das fases, usada só pra saber qual é "mais avançada".
     private static final String[] ORDEM_FASES = {"LUA", "MARTE", "TITA", "CALISTO", "AHARIN"};
@@ -61,8 +63,10 @@ public class SaveManager {
         prefs.putInteger("saveVersion", SAVE_VERSION);
 
         prefs.putFloat("hp", status.hp);
-        prefs.putFloat("oxigenio", status.oxigenio);
         prefs.putInteger("municao", status.municao);
+        prefs.putInteger("creditos", status.creditos);
+        prefs.putString("dificuldade", status.dificuldade.name());
+        prefs.putString("chefesMortos", String.join(",", status.chefesMortos));
 
         prefs.putBoolean("estufaReparada", status.estufaReparada);
         prefs.putBoolean("energiaReparada", status.energiaReparada);
@@ -96,6 +100,16 @@ public class SaveManager {
         // string separada por vírgula, pra sobreviver a um save/load.
         prefs.putString("inventario", status.inventario.serializar());
 
+        // ITEM 24: persiste se o drone estava chamado, pra ele voltar sozinho
+        // depois de um checkpoint/continue.
+        prefs.putBoolean("droneAtivo", status.droneAtivo);
+
+        // ITEM 24: checkpoint da estatua/painel, separado do CONTINUAR do menu.
+        prefs.putBoolean("temCheckpoint", status.temCheckpoint);
+        prefs.putFloat("checkpointX", status.checkpointX);
+        prefs.putFloat("checkpointY", status.checkpointY);
+        prefs.putString("checkpointFase", status.checkpointFase != null ? status.checkpointFase : "");
+
         prefs.flush();
 
         // Atualiza (sem regredir) o recorde de fase mais longe alcancada.
@@ -110,8 +124,12 @@ public class SaveManager {
         }
 
         status.hp = prefs.getFloat("hp", 100f);
-        status.oxigenio = prefs.getFloat("oxigenio", 100f);
         status.municao = prefs.getInteger("municao", 20);
+        status.creditos = prefs.getInteger("creditos", 0);
+        try { status.dificuldade = Difficulty.valueOf(prefs.getString("dificuldade", "NORMAL")); } catch (Exception ignored) { status.dificuldade = Difficulty.NORMAL; }
+        status.chefesMortos.clear();
+        String chefes = prefs.getString("chefesMortos", "");
+        if (!chefes.isEmpty()) for (String id : chefes.split(",")) if (!id.isEmpty()) status.chefesMortos.add(id);
 
         status.estufaReparada = prefs.getBoolean("estufaReparada", false);
         status.energiaReparada = prefs.getBoolean("energiaReparada", false);
@@ -143,6 +161,14 @@ public class SaveManager {
 
         // ITEM 15: recarrega as chaves/itens de posse salvos.
         status.inventario.carregarDe(prefs.getString("inventario", ""));
+
+        // ITEM 24: recarrega se o drone estava chamado.
+        status.droneAtivo = prefs.getBoolean("droneAtivo", false);
+
+        status.temCheckpoint = prefs.getBoolean("temCheckpoint", false);
+        status.checkpointX = prefs.getFloat("checkpointX", 200f);
+        status.checkpointY = prefs.getFloat("checkpointY", 200f);
+        status.checkpointFase = prefs.getString("checkpointFase", "");
 
         // CORRIGIDO: antes o MissionState passado aqui ficava sempre na etapa 0
         // (recem-criado), entao ao clicar em "CONTINUAR" o Quest Tracker voltava

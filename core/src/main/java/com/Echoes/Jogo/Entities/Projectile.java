@@ -10,17 +10,25 @@ public class Projectile {
     public float x, y;
     public float velX, velY;
     public boolean ativo;
+    public String efeitoTipo;
+    public float dano = 50f;
+    public float tamanho = 5f;
 
     private float distanciaPercorrida;
     private float alcanceMaximo;
 
     // Recebe de onde sai (startX, startY), para onde vai (targetX, targetY), velocidade e alcance
     public Projectile(float startX, float startY, float targetX, float targetY, float speed, float maxRange) {
+        this(startX, startY, targetX, targetY, speed, maxRange, "");
+    }
+
+    public Projectile(float startX, float startY, float targetX, float targetY, float speed, float maxRange, String efeitoTipo) {
         this.x = startX;
         this.y = startY;
         this.alcanceMaximo = maxRange;
         this.distanciaPercorrida = 0;
         this.ativo = true;
+        this.efeitoTipo = efeitoTipo == null ? "" : efeitoTipo;
 
         // Calcula a direção do tiro usando matemática básica de vetores
         float dx = targetX - startX;
@@ -34,6 +42,20 @@ public class Projectile {
             this.velX = speed;
             this.velY = 0;
         }
+    }
+
+    private static boolean proximoVeneno = false;
+
+    public static Projectile tiroEspecialInimigo(float startX, float startY, float targetX, float targetY, float speed, float maxRange) {
+        proximoVeneno = !proximoVeneno;
+        String efeito = proximoVeneno ? "VENENO" : "GELO";
+        return new Projectile(startX, startY, targetX, targetY, speed, maxRange, efeito);
+    }
+
+    public Projectile comForca(float dano, float tamanho) {
+        this.dano = dano;
+        this.tamanho = tamanho;
+        return this;
     }
 
     public void update(float delta) {
@@ -61,6 +83,6 @@ public class Projectile {
 
         // Desenha um projétil circular (pode ser substituído por textura depois)
         shapeRenderer.setColor(1f, 1f, 0f, 1f); // Amarelo
-        shapeRenderer.circle(x, y, 5);
+        shapeRenderer.circle(x, y, tamanho);
     }
 }

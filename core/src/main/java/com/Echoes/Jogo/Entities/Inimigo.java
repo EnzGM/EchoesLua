@@ -8,6 +8,8 @@ import java.util.List;
 
 public class Inimigo {
 
+    public static float MULTIPLICADOR_VELOCIDADE_INIMIGO = 1f;
+
     public enum TipoInimigo { RAPIDO, ATIRADOR, NORMAL }
 
     public Rectangle bounds;
@@ -71,6 +73,8 @@ public class Inimigo {
             dy /= dist;
         }
 
+        float velocidadeAtual = velocidade * MULTIPLICADOR_VELOCIDADE_INIMIGO;
+
         // IA por Tipo
         if (tipo == TipoInimigo.RAPIDO || tipo == TipoInimigo.NORMAL) {
             if (dist > RAIO_PERSEGUICAO && !perseguicaoTotal) {
@@ -82,32 +86,33 @@ public class Inimigo {
                     wanderDirX = MathUtils.cos(angulo);
                     wanderDirY = MathUtils.sin(angulo);
                 }
-                bounds.x += wanderDirX * (velocidade * 0.4f) * delta;
-                bounds.y += wanderDirY * (velocidade * 0.4f) * delta;
+                bounds.x += wanderDirX * (velocidadeAtual * 0.4f) * delta;
+                bounds.y += wanderDirY * (velocidadeAtual * 0.4f) * delta;
             } else {
                 // Player perto: avança diretamente em direção a ele
-                bounds.x += dx * velocidade * delta;
-                bounds.y += dy * velocidade * delta;
+                bounds.x += dx * velocidadeAtual * delta;
+                bounds.y += dy * velocidadeAtual * delta;
             }
         } else if (tipo == TipoInimigo.ATIRADOR) {
             // Se estiver longe aproxima, se estiver perto mantém distância e atira
             if (dist > 250f) {
-                bounds.x += dx * velocidade * delta;
-                bounds.y += dy * velocidade * delta;
+                bounds.x += dx * velocidadeAtual * delta;
+                bounds.y += dy * velocidadeAtual * delta;
             } else if (dist < 150f) {
-                bounds.x -= dx * velocidade * delta;
-                bounds.y -= dy * velocidade * delta;
+                bounds.x -= dx * velocidadeAtual * delta;
+                bounds.y -= dy * velocidadeAtual * delta;
             }
 
-            // Disparo do Inimigo Atirador
+            // Inimigos comuns mantêm tiros simples; os padrões bullet hell ficam nos bosses.
             timerTiro -= delta;
-            if (timerTiro <= 0f && dist < 500f) {
-                timerTiro = 1.8f; // Intervalo de tiro
-                projeteisInimigos.add(new Projectile(
-                    centroInimigoX, centroInimigoY,
-                    centroPlayerX, centroPlayerY,
-                    320f, 600f
-                ));
+            if (timerTiro <= 0f && dist < 650f) {
+                timerTiro = 1.55f;
+                float destX = centroPlayerX;
+                float destY = centroPlayerY;
+                projeteisInimigos.add(Projectile.tiroEspecialInimigo(
+                    centroInimigoX, centroInimigoY, destX, destY,
+                    270f, 700f
+                ).comForca(12f, 7f));
             }
         }
     }
@@ -121,7 +126,14 @@ public class Inimigo {
     }
 
     public ItemType getDrop() {
-        return (tipo == TipoInimigo.ATIRADOR) ? ItemType.MUNICAO : ItemType.OXIGENIO;
+        // Todo inimigo agora deixa material de crafting.
+        int rolagem = MathUtils.random(0, 3);
+        switch (rolagem) {
+            case 0: return ItemType.METAL;
+            case 1: return ItemType.CIRCUITO;
+            case 2: return ItemType.GELO;
+            default: return ItemType.PECA;
+        }
     }
 
     public Color getCor() {

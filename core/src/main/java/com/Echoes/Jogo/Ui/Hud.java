@@ -22,7 +22,8 @@ public class Hud {
 
         boolean semMunicao = status.municao <= 0;
 
-        int linhas = 6 + (extraLinha != null ? 1 : 0) + (semMunicao ? 1 : 0);
+        int linhas = 7 + (extraLinha != null ? 1 : 0) + (semMunicao ? 1 : 0)
+            + (status.efeitoTimer > 0f ? 1 : 0) + (status.cargaAtaque > 0f ? 1 : 0);
         float altura = 25f + linhas * 27f;
 
         shapeRenderer.setProjectionMatrix(hudCamera.combined);
@@ -37,12 +38,11 @@ public class Hud {
         font.getData().setScale(1f);
         float y = screenHeight - 30;
 
-        // Linha 1: Oxigênio
-        font.setColor(status.oxigenio <= 25f ? Color.RED : Color.CYAN);
-        font.draw(batch, "O2: " + (int) status.oxigenio + "%", 30, y);
+        font.setColor(Color.WHITE);
+        font.draw(batch, "DIF: " + status.dificuldade.nome, 30, y);
         y -= 27f;
 
-        // Linha 2: HP
+        // Linha 1: HP
         font.setColor(status.hp <= 25f ? Color.RED : Color.WHITE);
         font.draw(batch, "HP: " + (int) status.hp, 30, y);
         y -= 27f;
@@ -52,6 +52,26 @@ public class Hud {
         String armaStatus = status.armaCraftada ? "SIM" : "NAO";
         font.draw(batch, "MUNICAO: " + status.municao + " | ARMA: " + armaStatus, 30, y);
         y -= 27f;
+        // ITEM 22: Créditos da loja.
+        font.setColor(Color.GOLD);
+        font.draw(batch, "CREDITOS: " + status.creditos, 30, y);
+        y -= 27f;
+
+        // ITEM 23: status especial com timer regressivo.
+        if (status.efeitoTimer > 0f) {
+            font.setColor("VENENO".equals(status.efeitoTipo) ? Color.GREEN : Color.CYAN);
+            font.draw(batch, status.efeitoTipo + " " + String.format("%.1f", status.efeitoTimer) + " s", 30, y);
+            y -= 27f;
+        }
+
+        if (status.cargaAtaque > 0f) {
+            font.setColor(Color.ORANGE);
+            int blocos = Math.round(status.progressoCargaAtaque() * 10f);
+            StringBuilder barra = new StringBuilder();
+            for (int i = 0; i < 10; i++) barra.append(i < blocos ? "#" : "-");
+            font.draw(batch, "CARGA SPACE: [" + barra + "]", 30, y);
+            y -= 27f;
+        }
 
         // Linha 4: Reparos (Estufa e Gerador) — nomes batendo com as pecas do chao
         String estufaStatus = status.estufaReparada ? "ON" : "OFF";

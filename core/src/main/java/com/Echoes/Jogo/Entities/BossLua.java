@@ -2,6 +2,7 @@ package com.Echoes.Jogo.Entities;
 
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.Rectangle;
+import com.badlogic.gdx.math.MathUtils;
 
 import java.util.List;
 
@@ -50,7 +51,16 @@ public class BossLua extends Inimigo {
             float tx = player.x + player.width / 2f;
             float ty = player.y + player.height / 2f;
 
-            projeteisInimigos.add(new Projectile(sx, sy, tx, ty, 240f, 650f));
+            float base = (float) Math.atan2(ty - sy, tx - sx);
+            for (int i = -2; i <= 2; i++) {
+                float ang = base + i * 0.16f;
+                float dx = MathUtils.cos(ang);
+                float dy = MathUtils.sin(ang);
+                projeteisInimigos.add(Projectile.tiroEspecialInimigo(
+                    sx, sy, sx + dx * 700f, sy + dy * 700f,
+                    250f, 700f
+                ).comForca(16f, 7f));
+            }
         }
     }
 
