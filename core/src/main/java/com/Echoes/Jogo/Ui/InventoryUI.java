@@ -34,21 +34,21 @@ public class InventoryUI {
         float delta = Gdx.graphics.getDeltaTime();
         if (mensagemTimer > 0f) mensagemTimer -= delta;
 
-        // Converte o mouse da tela para as coordenadas reais da HUD.
-        OrthographicCamera camera = null;
-        // O update nao recebe a camera; os valores abaixo acompanham a HUD 1280x720.
-        // O render/update dos projetos usa essa mesma escala.
+        // Usa as coordenadas da camera da HUD, evitando erro de escala/posicao do mouse.
         float mouseX = Gdx.input.getX();
-        float mouseY = 720f - Gdx.input.getY();
+        float mouseY = Gdx.graphics.getHeight() - Gdx.input.getY();
+        if (Gdx.graphics.getWidth() != 1280 || Gdx.graphics.getHeight() != 720) {
+            mouseX *= 1280f / Gdx.graphics.getWidth();
+            mouseY *= 720f / Gdx.graphics.getHeight();
+        }
 
         float x = 100f, y = 80f, width = 1080f, height = 560f;
         float listaX = x + 35f;
         float listaTop = y + height - 125f;
 
-        // Comeca o arraste no clique. O item permanece preso ao mouse ate soltar.
         if (Gdx.input.justTouched()) {
-            // Itens produzidos pelo craft continuam podendo ser usados com clique.
-            if (mouseX >= x + 35f && mouseX <= x + 430f && mouseY >= y + 95f && mouseY <= y + 150f) {
+            // Itens produzidos pelo craft: use o mesmo retangulo que aparece no render.
+            if (mouseX >= x + 35f && mouseX <= x + 435f && mouseY >= y + 112f && mouseY <= y + 145f) {
                 if (status.inventario.tem("MUNICAO_X3")) {
                     status.inventario.remover("MUNICAO_X3", 1);
                     status.municao += 3;
@@ -56,7 +56,7 @@ public class InventoryUI {
                     return;
                 }
             }
-            if (mouseX >= x + 35f && mouseX <= x + 430f && mouseY >= y + 45f && mouseY <= y + 95f) {
+            if (mouseX >= x + 35f && mouseX <= x + 435f && mouseY >= y + 62f && mouseY <= y + 95f) {
                 if (status.inventario.tem("VIDA_X25")) {
                     status.inventario.remover("VIDA_X25", 1);
                     status.hp = Math.min(100f, status.hp + 25f);
@@ -65,10 +65,13 @@ public class InventoryUI {
                 }
             }
 
+            // Cada hitbox abaixo corresponde exatamente a uma linha desenhada no inventario.
             for (int i = 0; i < materiais.length; i++) {
                 float iy = listaTop - i * 55f;
-                if (mouseX >= listaX && mouseX <= listaX + 390f &&
-                    mouseY >= iy - 30f && mouseY <= iy + 18f &&
+                float itemTop = iy - 34f;
+                float itemBottom = iy - 4f;
+                if (mouseX >= listaX && mouseX <= listaX + 400f &&
+                    mouseY >= itemBottom && mouseY <= itemTop &&
                     status.inventario.getQuantidade(materiais[i]) > 0) {
                     arrastando = materiais[i];
                     break;
@@ -76,8 +79,8 @@ public class InventoryUI {
             }
         }
 
-        // Solta o material sobre um dos slots.
-        if (arrastando != null && Gdx.input.isTouched() == false) {
+        if (arrastando != null && !Gdx.input.isTouched()) {
+            // Mesmos retangulos usados visualmente para os dois slots.
             if (mouseX >= x + 500f && mouseX <= x + 720f && mouseY >= y + 255f && mouseY <= y + 405f) {
                 slotA = arrastando;
                 tentarCraftar(status);
