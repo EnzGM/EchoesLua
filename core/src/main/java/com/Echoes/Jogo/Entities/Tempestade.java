@@ -1,4 +1,4 @@
-package com.Echoes.Jogo.Managers;
+package com.Echoes.Jogo.Entities;
 
 /**
  * ITEM 23: ciclo de tempestade — calmo -> alerta -> tempestade -> calmo,

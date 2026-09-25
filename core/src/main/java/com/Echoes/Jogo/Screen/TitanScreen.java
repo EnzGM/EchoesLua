@@ -216,6 +216,8 @@ public class TitanScreen implements Screen {
     public void render(float delta) {
         com.Echoes.Jogo.Entities.Inimigo.MULTIPLICADOR_VELOCIDADE_INIMIGO = status.dificuldade.multiplicadorVelocidadeInimigo;
         inventoryUI.update(status);
+        // Inventario e uma pausa real: nenhuma logica de jogo roda enquanto ele esta aberto.
+        if (!inventoryUI.isOpen()) {
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
             pausado = !pausado;
         }
@@ -251,6 +253,8 @@ public class TitanScreen implements Screen {
                 status.atualizarCombate(delta);
                 updateRegenMunicao(delta);
             }
+        }
+
         }
 
         if (status.missaoFalhou) {

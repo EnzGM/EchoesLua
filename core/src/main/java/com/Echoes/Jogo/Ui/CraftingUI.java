@@ -11,9 +11,9 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 
 /**
  * ITEM 22: menu da bancada de crafting. Cada receita pede exatamente 2
- * materiais (1 unidade de cada) do Inventario e entrega 1 item novo, tambem
- * no Inventario. Se faltar QUALQUER material da receita, nada e consumido —
- * so aparece o aviso de "faltam materiais".
+ * materiais (1 unidade de cada) do Inventario e aplica o efeito do resultado
+ * diretamente no status do jogador. Se faltar QUALQUER material da receita,
+ * nada e consumido — so aparece o aviso de "faltam materiais".
  */
 public class CraftingUI {
 
@@ -30,7 +30,7 @@ public class CraftingUI {
     }
 
     private final Receita[] receitas = {
-        new Receita("GELO", "PECA", "FILTRO_O2", Input.Keys.NUM_1),
+        new Receita("GELO", "PECA", "VIDA_X25", Input.Keys.NUM_1),
         new Receita("METAL", "CIRCUITO", "MUNICAO_X3", Input.Keys.NUM_2),
     };
 
@@ -77,8 +77,23 @@ public class CraftingUI {
         if (temA && temB) {
             status.inventario.remover(r.materialA, 1);
             status.inventario.remover(r.materialB, 1);
-            status.inventario.add(r.resultado, 1);
-            ultimaMensagem = "Craft concluido: " + r.resultado + "!";
+
+            // O resultado do craft e aplicado imediatamente ao status do jogador.
+            // Antes, a bancada apenas criava um item no inventario e nao alterava
+            // HP/municao, dando a impressao de que o craft nao funcionava.
+            if ("MUNICAO_X3".equals(r.resultado)) {
+                status.municao += 3;
+                ultimaMensagem = "Craft concluido: MUNICAO +3!";
+            } else if ("VIDA_X25".equals(r.resultado)) {
+                float hpAntes = status.hp;
+                status.hp = Math.min(100f, status.hp + 25f);
+                float recuperado = status.hp - hpAntes;
+                ultimaMensagem = "Craft concluido: VIDA +" + (int) recuperado + " HP!";
+            } else {
+                // Fallback para futuras receitas que realmente produzam um item.
+                status.inventario.add(r.resultado, 1);
+                ultimaMensagem = "Craft concluido: " + r.resultado + "!";
+            }
         } else {
             // Se faltar material, a receita NAO consome o outro item (nao mexe em nada).
             ultimaMensagem = "Faltam materiais para " + r.resultado + ".";
@@ -125,8 +140,10 @@ public class CraftingUI {
             boolean pronto = qtdA >= 1 && qtdB >= 1;
 
             font.setColor(pronto ? Color.GREEN : Color.GRAY);
+            String resultadoTexto = "MUNICAO_X3".equals(r.resultado) ? "MUNICAO +3"
+                : "VIDA_X25".equals(r.resultado) ? "VIDA +25 HP" : r.resultado;
             String txt = "[" + numero + "] " + r.materialA + " (" + qtdA + ") + "
-                + r.materialB + " (" + qtdB + ") -> " + r.resultado;
+                + r.materialB + " (" + qtdB + ") -> " + resultadoTexto;
             font.draw(batch, txt, x + 30, linhaY);
             linhaY -= 40f;
             numero++;

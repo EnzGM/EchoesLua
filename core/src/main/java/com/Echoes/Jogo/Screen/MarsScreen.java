@@ -201,6 +201,8 @@ public class MarsScreen implements Screen {
     public void render(float delta) {
         com.Echoes.Jogo.Entities.Inimigo.MULTIPLICADOR_VELOCIDADE_INIMIGO = status.dificuldade.multiplicadorVelocidadeInimigo;
         inventoryUI.update(status);
+        // Inventario e uma pausa real: nenhuma logica de jogo roda enquanto ele esta aberto.
+        if (!inventoryUI.isOpen()) {
         if (Gdx.input.isKeyJustPressed(Input.Keys.B) && !lojaUI.isAberta()) lojaUI.abrir();
         if (!status.missaoFalhou) {
             if (dialogueSystem.ativo) {
@@ -235,6 +237,8 @@ public class MarsScreen implements Screen {
                 dispose();
                 return;
             }
+        }
+
         }
 
         // A troca de tela foi agendada (portal usado) — para aqui

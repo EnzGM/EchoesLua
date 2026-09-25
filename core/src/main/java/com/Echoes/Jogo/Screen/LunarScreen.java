@@ -206,6 +206,8 @@ public class LunarScreen implements Screen {
     public void render(float delta) {
         com.Echoes.Jogo.Entities.Inimigo.MULTIPLICADOR_VELOCIDADE_INIMIGO = status.dificuldade.multiplicadorVelocidadeInimigo;
         inventoryUI.update(status);
+        // Inventario e uma pausa real: nenhuma logica de jogo roda enquanto ele esta aberto.
+        if (!inventoryUI.isOpen()) {
         if (Gdx.input.isKeyJustPressed(Input.Keys.B) && !lojaUI.isAberta()) lojaUI.abrir();
 
         if (dialogueSystem.ativo) {
@@ -233,6 +235,8 @@ public class LunarScreen implements Screen {
             updateCamera();
             particleManager.update(delta);
             status.atualizarCombate(delta);
+
+        }
 
         }
 
